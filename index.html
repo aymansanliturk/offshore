@@ -6,32 +6,27 @@
     <title>Offshore Wind Digest — Denmark</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { background-color: #f8fafc; color: #1e293b; }
         .skeleton { background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; }
         @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
     </style>
 </head>
-<body class="p-4 md:p-8 min-h-screen">
+<body class="bg-slate-50 text-slate-900 min-h-screen p-4 md:p-8">
     <div class="max-w-3xl mx-auto">
         <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 border-b border-slate-200 pb-6">
             <div>
-                <h1 class="text-2xl font-bold text-slate-900 tracking-tight">Offshore Wind Digest</h1>
-                <p id="meta-text" class="text-sm text-slate-500 mt-1 italic">Intelligence feed status: Waiting...</p>
+                <h1 class="text-2xl font-bold tracking-tight text-slate-900">Offshore Wind Digest</h1>
+                <p id="meta-text" class="text-sm text-slate-500 mt-1 italic">Initializing intelligence feed...</p>
             </div>
             <button id="refresh-btn" class="px-5 py-2 bg-white border border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 active:scale-95 transition-all text-sm font-medium flex items-center gap-2">
                 <span>⟳</span> Refresh
             </button>
         </header>
 
-        <!-- Debug/Error Box -->
-        <div id="error-container" class="mb-6 hidden">
+        <div id="error-box" class="mb-6 hidden">
             <div class="p-5 bg-red-50 border border-red-200 rounded-2xl">
-                <p class="text-sm font-bold text-red-800 flex items-center gap-2">
-                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path></svg>
-                    Critical Connection Error
-                </p>
-                <div id="error-text" class="text-xs text-red-700 mt-2 font-mono bg-white/40 p-3 rounded border border-red-100 break-words"></div>
-                <p class="text-[10px] text-red-400 mt-3 italic font-sans italic">Troubleshooting: If you recently added the GEMINI_API_KEY, you MUST push a new commit to GitHub to trigger a redeploy of the Function code.</p>
+                <p class="text-sm font-bold text-red-800">Connection Error</p>
+                <p id="error-details" class="text-xs text-red-700 mt-1 font-mono break-all"></p>
+                <p class="text-[10px] text-red-400 mt-2 italic font-sans italic">Note: If you just added the API key, you MUST push a new commit to GitHub to redeploy.</p>
             </div>
         </div>
 
@@ -39,7 +34,7 @@
         <div id="content-area" class="space-y-8"></div>
 
         <footer class="mt-12 pt-6 border-t border-slate-200 text-center text-[10px] text-slate-400 uppercase tracking-widest">
-            Powered by Gemini · Data ground truth via Google Search Grounding
+            Powered by Gemini · Automated Maritime Intel
         </footer>
     </div>
 
@@ -54,13 +49,13 @@
         const UI = {
             reset: () => {
                 document.getElementById('content-area').replaceChildren();
-                document.getElementById('error-container').classList.add('hidden');
+                document.getElementById('error-box').classList.add('hidden');
                 document.getElementById('notice-area').classList.add('hidden');
             },
-            showError: (details) => {
-                document.getElementById('error-text').textContent = typeof details === 'object' ? JSON.stringify(details, null, 2) : details;
-                document.getElementById('error-container').classList.remove('hidden');
-                document.getElementById('meta-text').textContent = "Connection failed.";
+            showError: (msg) => {
+                document.getElementById('error-details').textContent = msg;
+                document.getElementById('error-box').classList.remove('hidden');
+                document.getElementById('meta-text').textContent = "Failed to load.";
             },
             showNotice: (msg) => {
                 const area = document.getElementById('notice-area');
@@ -73,20 +68,20 @@
             },
             createSkeleton: () => {
                 const container = document.getElementById('content-area');
-                for (let i = 0; i < 4; i++) {
+                for (let i = 0; i < 3; i++) {
                     const skel = document.createElement('div');
                     skel.className = 'p-6 bg-white border border-slate-200 rounded-2xl space-y-4';
-                    skel.innerHTML = '<div class="skeleton h-4 w-1/4 rounded"></div><div class="skeleton h-3 w-full rounded"></div><div class="skeleton h-3 w-2/3 rounded"></div>';
+                    skel.innerHTML = '<div class="skeleton h-4 w-1/4 rounded"></div><div class="skeleton h-3 w-full rounded"></div>';
                     container.appendChild(skel);
                 }
             },
             render: (data) => {
                 const container = document.getElementById('content-area');
                 container.replaceChildren();
-                document.getElementById('meta-text').textContent = `Intelligence updated for ${data.date || 'Today'}`;
+                document.getElementById('meta-text').textContent = `${data.date || 'Today'} · Feed Updated`;
 
                 if (data.isFallback) {
-                    UI.showNotice("Real-time search is currently restricted by API quota. Showing latest available AI knowledge.");
+                    UI.showNotice("Real-time search restricted by API quota. Showing latest available AI knowledge.");
                 }
 
                 SECTIONS.forEach(sec => {
@@ -102,17 +97,17 @@
                     grid.className = 'grid gap-4';
 
                     if (items.length === 0) {
-                        grid.innerHTML = '<p class="text-xs text-slate-400 italic py-2 pl-1">No major updates found in this category.</p>';
+                        grid.innerHTML = '<p class="text-xs text-slate-400 italic py-2">No updates found.</p>';
                     } else {
                         items.forEach(item => {
                             const card = document.createElement('div');
-                            card.className = `bg-white border border-slate-200 rounded-2xl p-5 border-l-4 border-l-${sec.color}-500 shadow-sm hover:shadow-md transition-shadow`;
+                            card.className = `bg-white border border-slate-200 rounded-2xl p-5 border-l-4 border-l-${sec.color}-500 shadow-sm`;
                             card.innerHTML = `
                                 <h3 class="text-sm font-bold text-slate-800 mb-2">
                                     ${item.url ? `<a href="${item.url}" target="_blank" class="hover:text-blue-600 underline underline-offset-4 decoration-slate-200">${item.title}</a>` : item.title}
                                 </h3>
                                 <p class="text-sm text-slate-600 leading-relaxed italic border-l-2 border-slate-50 pl-3 mb-3">${item.summary}</p>
-                                <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">${item.source || 'Intelligence Feed'}</div>`;
+                                <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">${item.source || 'Intel Report'}</div>`;
                             grid.appendChild(card);
                         });
                     }
@@ -127,20 +122,15 @@
             btn.disabled = true;
             UI.reset();
             UI.createSkeleton();
-            document.getElementById('meta-text').textContent = "Authenticating with Gemini...";
+            document.getElementById('meta-text').textContent = "Scanning intelligence channels...";
 
             try {
                 const res = await fetch('/api/digest');
                 const data = await res.json();
-                
-                if (!res.ok) {
-                    UI.showError(data);
-                    return;
-                }
-                
+                if (!res.ok) throw new Error(data.details || data.error || "Connection failed.");
                 UI.render(data);
             } catch (e) {
-                UI.showError({ message: "Network or Request Error", details: e.message });
+                UI.showError(e.message);
             } finally {
                 btn.disabled = false;
             }
