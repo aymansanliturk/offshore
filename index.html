@@ -132,8 +132,8 @@ function renderDigest(data) {
   const content = document.getElementById('content');
   content.replaceChildren();
 
-  // Search-disabled notice
-  if (data._searchDisabled) {
+  // Fallback notice — shown when real-time search was unavailable
+  if (data.isFallback) {
     const notice = document.createElement('div');
     notice.className = 'flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-700';
 
@@ -293,8 +293,8 @@ async function runDigest(forceRefresh = false) {
         throw new Error(data.error || `HTTP ${res.status}`);
       }
 
-      // Attach search status so the notice survives cache hits too.
-      data._searchDisabled = res.headers.get('X-Search-Status') === 'disabled';
+      // isFallback is already set in the response body by the backend.
+      // Caching it here means the notice survives page reloads from cache too.
       saveCache(data);
       renderDigest(data);
       return;
