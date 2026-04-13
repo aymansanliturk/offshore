@@ -3,38 +3,205 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Offshore Wind Digest</title>
+    <title>Offshore Wind Radar — Denmark</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        .skeleton { background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%); background-size: 200% 100%; animation: loading 1.5s infinite; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #f0f4f8; }
+        .source-tag { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+        .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        .shimmer { background: linear-gradient(90deg, #edf2f7 25%, #e2e8f0 50%, #edf2f7 75%); background-size: 200% 100%; animation: loading 1.5s infinite; }
         @keyframes loading { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
     </style>
 </head>
-<body class="bg-slate-50 text-slate-900 min-h-screen p-4 md:p-8">
-    <div class="max-w-3xl mx-auto">
-        
-        <!-- Header -->
-        <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 border-b border-slate-200 pb-6">
-            <div>
-                <h1 class="text-2xl font-bold tracking-tight text-slate-900">Offshore Wind Digest</h1>
-                <p id="status-text" class="text-sm text-slate-500 mt-1 italic">Ready</p>
-            </div>
-            <div class="flex gap-2">
-                <button id="config-btn" class="p-2 text-slate-400 hover:text-slate-600">⚙️</button>
-                <button id="refresh-btn" class="px-5 py-2 bg-blue-600 text-white rounded-xl shadow-sm hover:bg-blue-700 active:scale-95 transition-all text-sm font-medium">Refresh Feed</button>
-            </div>
-        </header>
+<body class="text-slate-900 pb-12">
 
-        <!-- API Key Setup -->
-        <div id="setup-area" class="mb-8 p-6 bg-white border-2 border-dashed border-slate-200 rounded-2xl hidden">
-            <h2 class="text-sm font-bold mb-2">API Configuration</h2>
-            <p class="text-xs text-slate-500 mb-4">Paste your Gemini API Key from <a href="https://aistudio.google.com/" target="_blank" class="text-blue-600 underline">Google AI Studio</a>.</p>
-            <div class="flex gap-2">
-                <input type="password" id="api-key-input" class="flex-1 px-4 py-2 border border-slate-200 rounded-lg text-sm" placeholder="AIza...">
-                <button id="save-key-btn" class="px-4 py-2 bg-slate-800 text-white rounded-lg text-sm">Save Key</button>
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-8 px-4 mb-8 border-b-4 border-blue-500 shadow-xl">
+        <div class="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
+            <div class="text-center md:text-left">
+                <h1 class="text-3xl font-extrabold tracking-tighter flex items-center justify-center md:justify-start gap-3">
+                    <span class="text-blue-400">⚓</span> DANISH WIND RADAR
+                </h1>
+                <p class="text-slate-400 text-sm mt-1 font-medium">Real-time maritime intelligence & project tracking</p>
+            </div>
+            <div class="flex items-center gap-4">
+                <div id="last-update" class="text-[10px] text-slate-500 font-bold uppercase tracking-widest bg-slate-800 px-3 py-1 rounded-full">Initializing Feed...</div>
+                <button onclick="refreshAll()" class="p-2 bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors shadow-lg active:scale-95">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto px-4">
+        
+        <!-- Key Project Monitoring -->
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-12">
+            <div class="lg:col-span-3">
+                <div class="flex items-center gap-3 mb-6">
+                    <h2 class="text-lg font-bold text-slate-800 uppercase tracking-tight">Live Industry Feed</h2>
+                    <div class="h-px flex-1 bg-slate-200"></div>
+                </div>
+                
+                <div id="news-grid" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- News items injected here -->
+                </div>
+            </div>
+
+            <!-- Quick Links / Official Sources -->
+            <div class="space-y-6">
+                <h2 class="text-lg font-bold text-slate-800 uppercase tracking-tight">Official Portals</h2>
+                <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200">
+                    <ul class="space-y-4">
+                        <li>
+                            <a href="https://ens.dk/en/our-responsibilities/wind-power/offshore-wind-power" target="_blank" class="group flex items-start gap-3">
+                                <span class="bg-blue-50 text-blue-600 p-2 rounded-lg group-hover:bg-blue-600 group-hover:text-white transition-all text-sm font-bold">DEA</span>
+                                <div>
+                                    <p class="text-sm font-bold text-slate-800">Danish Energy Agency</p>
+                                    <p class="text-[10px] text-slate-500">Tenders & Legal Approvals</p>
+                                </div>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="https://energinet.dk/en/infrastructure-projects/offshore-wind/" target="_blank" class="group flex items-start gap-3">
+                                <span class="bg-emerald-50 text-emerald-600 p-2 rounded-lg group-hover:bg-emerald-600 group-hover:text-white transition-all text-sm font-bold">TSO</span>
+                                <div>
+                                    <p class="text-sm font-bold text-slate-800">Energinet Grid Projects</p>
+                                    <p class="text-[10px] text-slate-500">Infrastructure & Cable News</p>
+                                </div>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="https://www.offshorewind.biz/tag/denmark/" target="_blank" class="group flex items-start gap-3">
+                                <span class="bg-purple-50 text-purple-600 p-2 rounded-lg group-hover:bg-purple-600 group-hover:text-white transition-all text-sm font-bold">BIZ</span>
+                                <div>
+                                    <p class="text-sm font-bold text-slate-800">OffshoreWind.biz</p>
+                                    <p class="text-[10px] text-slate-500">Market Intelligence Hub</p>
+                                </div>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+
+                <!-- Strategic Projects Box -->
+                <div class="bg-slate-900 rounded-2xl p-6 text-white shadow-xl relative overflow-hidden">
+                    <div class="relative z-10">
+                        <h3 class="text-xs font-bold text-blue-400 uppercase tracking-widest mb-4">Strategic Radar</h3>
+                        <div class="space-y-3">
+                            <div class="flex justify-between items-center text-xs">
+                                <span class="text-slate-400">North Sea Island</span>
+                                <span class="bg-slate-800 px-2 py-1 rounded text-slate-300">Procurement</span>
+                            </div>
+                            <div class="flex justify-between items-center text-xs">
+                                <span class="text-slate-400">Thor Wind Farm</span>
+                                <span class="bg-slate-800 px-2 py-1 rounded text-slate-300">Construction</span>
+                            </div>
+                            <div class="flex justify-between items-center text-xs">
+                                <span class="text-slate-400">Hesselø</span>
+                                <span class="bg-slate-800 px-2 py-1 rounded text-slate-300">Tendering</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="absolute -right-4 -bottom-4 opacity-10">
+                        <svg class="w-32 h-32 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71L12 2z"></path></svg>
+                    </div>
+                </div>
             </div>
         </div>
 
+    </main>
+
+    <script>
+        // RSS Feed Aggregator Setup
+        // Uses a public CORS proxy (allorigins.win) to fetch RSS without a backend.
+        const FEEDS = [
+            { 
+                name: "Google News", 
+                url: "https://news.google.com/rss/search?q=offshore+wind+denmark+energy+island+when:7d&hl=en-US&gl=US&ceid=US:en",
+                category: "General News"
+            },
+            { 
+                name: "Offshore Wind Biz", 
+                url: "https://www.offshorewind.biz/tag/denmark/feed/",
+                category: "Industry"
+            }
+        ];
+
+        async function fetchFeed(feed) {
+            const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(feed.url)}`;
+            try {
+                const response = await fetch(proxyUrl);
+                const data = await response.json();
+                const parser = new DOMParser();
+                const xml = parser.parseFromString(data.contents, "text/xml");
+                const items = xml.querySelectorAll("item");
+                
+                return Array.from(items).map(item => ({
+                    title: item.querySelector("title")?.textContent,
+                    link: item.querySelector("link")?.textContent,
+                    date: new Date(item.querySelector("pubDate")?.textContent),
+                    source: feed.name,
+                    category: feed.category
+                }));
+            } catch (error) {
+                console.error("Error fetching feed:", feed.name, error);
+                return [];
+            }
+        }
+
+        async function refreshAll() {
+            const grid = document.getElementById('news-grid');
+            const meta = document.getElementById('last-update');
+            
+            // Show Skeleton
+            grid.innerHTML = Array(6).fill(0).map(() => `
+                <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
+                    <div class="shimmer h-4 w-1/4 rounded mb-4"></div>
+                    <div class="shimmer h-5 w-full rounded mb-2"></div>
+                    <div class="shimmer h-5 w-2/3 rounded"></div>
+                </div>
+            `).join('');
+
+            // Fetch and Combine
+            const results = await Promise.all(FEEDS.map(fetchFeed));
+            let combined = results.flat().sort((a, b) => b.date - a.date);
+            
+            // Limit to top 12
+            combined = combined.slice(0, 12);
+
+            // Render
+            grid.innerHTML = combined.map(item => {
+                const dateStr = item.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                const color = item.source === "Google News" ? "blue" : "purple";
+                
+                return `
+                    <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200 hover:border-blue-400 hover:shadow-lg transition-all flex flex-col justify-between group">
+                        <div>
+                            <div class="flex justify-between items-center mb-3">
+                                <span class="source-tag text-${color}-600 bg-${color}-50 px-2 py-1 rounded">${item.source}</span>
+                                <span class="text-[10px] text-slate-400 font-bold">${dateStr}</span>
+                            </div>
+                            <h3 class="font-bold text-slate-800 text-sm mb-3 group-hover:text-blue-600 transition-colors">
+                                <a href="${item.link}" target="_blank" class="line-clamp-2">${item.title}</a>
+                            </h3>
+                        </div>
+                        <div class="flex items-center gap-1 text-blue-600 font-bold text-[10px] uppercase tracking-widest mt-4">
+                            Read Full Report 
+                            <svg class="w-3 h-3 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M9 5l7 7-7 7"></path></svg>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            meta.textContent = `LAST SYNC: ${new Date().toLocaleTimeString()}`;
+        }
+
+        // Initialize on load
+        window.onload = refreshAll;
+    </script>
+</body>
+</html>
         <!-- Notification Area -->
         <div id="msg-area" class="mb-6 hidden"></div>
 
