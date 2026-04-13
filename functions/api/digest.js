@@ -1,4 +1,4 @@
-// Cloudflare Pages Function — functions/api/digest.js
+// Cloudflare Pages Function — functions/api/digest.js — deployed 2026-04-13
 //
 // Two-pass strategy to handle "limit: 0" search grounding quota:
 //   Pass 1 — call Gemini WITH Google Search tool (real-time data)
