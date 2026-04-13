@@ -32,7 +32,7 @@
   <div id="content" class="space-y-8"></div>
 
   <footer class="mt-12 pt-6 border-t border-slate-200 text-center text-xs text-slate-400">
-    Powered by Gemini Flash · Real-time data via Google Search Grounding
+    Powered by Gemini Flash · Data via Google Search Grounding when available
   </footer>
 
 </div>
@@ -131,6 +131,22 @@ function renderDigest(data) {
 
   const content = document.getElementById('content');
   content.replaceChildren();
+
+  // Search-disabled notice
+  if (data._searchDisabled) {
+    const notice = document.createElement('div');
+    notice.className = 'flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-700';
+
+    const icon = document.createElement('span');
+    icon.textContent = '⚠';
+    icon.className = 'mt-px shrink-0';
+
+    const msg = document.createElement('span');
+    msg.textContent = 'Real-time search is currently restricted by API quota — showing latest available AI knowledge. Data may not reflect today\'s news.';
+
+    notice.append(icon, msg);
+    content.appendChild(notice);
+  }
 
   SECTIONS.forEach(section => {
     const items = Array.isArray(data[section.id]) ? data[section.id] : [];
@@ -277,6 +293,8 @@ async function runDigest(forceRefresh = false) {
         throw new Error(data.error || `HTTP ${res.status}`);
       }
 
+      // Attach search status so the notice survives cache hits too.
+      data._searchDisabled = res.headers.get('X-Search-Status') === 'disabled';
       saveCache(data);
       renderDigest(data);
       return;
