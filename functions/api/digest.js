@@ -61,9 +61,13 @@ Return the response in the requested JSON format only — no markdown, no commen
         body: JSON.stringify(requestBody),
       });
 
-      // 404 = model not available on this API key — try the next one.
-      if (geminiRes.status === 404) {
-        lastError = `Model ${model} not available (404)`;
+      // 404 = model not available on this API key.
+      // 400 = model exists but doesn't support this request (e.g. google_search
+      //       + responseSchema combo not supported on this model version).
+      // Either way: skip to the next model in the list.
+      if (geminiRes.status === 404 || geminiRes.status === 400) {
+        const errText = await geminiRes.text();
+        lastError = `${model} skipped (HTTP ${geminiRes.status}): ${errText}`;
         continue;
       }
 
