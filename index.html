@@ -126,13 +126,16 @@
 
             try {
                 const res = await fetch('/api/digest');
-                const text = await res.text(); // Read as text first to avoid "string match" error
+                const text = await res.text();
                 
                 let data;
                 try {
                     data = JSON.parse(text);
                 } catch (e) {
-                    throw new Error("Server sent invalid data. This is usually a Cloudflare 500 error page. \n\nRaw Response: " + text.slice(0, 300));
+                    if (text.toLowerCase().includes('<!doctype html>')) {
+                        throw new Error("Backend Crash (500). The server returned an HTML error page. This usually means your Functions code has a syntax error or failed to initialize.");
+                    }
+                    throw new Error("Invalid response format: " + text.slice(0, 100));
                 }
 
                 if (!res.ok) throw new Error(data.details || data.error || "Server error");
