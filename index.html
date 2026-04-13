@@ -16,18 +16,22 @@
         <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 border-b border-slate-200 pb-6">
             <div>
                 <h1 class="text-2xl font-bold text-slate-900 tracking-tight">Offshore Wind Digest</h1>
-                <p id="meta-text" class="text-sm text-slate-500 mt-1 italic">Initializing intelligence feed...</p>
+                <p id="meta-text" class="text-sm text-slate-500 mt-1 italic">Intelligence feed status: Waiting...</p>
             </div>
             <button id="refresh-btn" class="px-5 py-2 bg-white border border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 active:scale-95 transition-all text-sm font-medium flex items-center gap-2">
                 <span>⟳</span> Refresh
             </button>
         </header>
 
+        <!-- Debug/Error Box -->
         <div id="error-container" class="mb-6 hidden">
-            <div class="p-4 bg-red-50 border border-red-200 rounded-2xl">
-                <p class="text-sm font-bold text-red-800">System Error</p>
-                <p id="error-text" class="text-xs text-red-700 mt-1 font-mono break-all"></p>
-                <p class="text-[10px] text-red-400 mt-2 italic font-sans">If you just added an API key, push a new commit to GitHub to trigger a redeploy.</p>
+            <div class="p-5 bg-red-50 border border-red-200 rounded-2xl">
+                <p class="text-sm font-bold text-red-800 flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path></svg>
+                    Critical Connection Error
+                </p>
+                <div id="error-text" class="text-xs text-red-700 mt-2 font-mono bg-white/40 p-3 rounded border border-red-100 break-words"></div>
+                <p class="text-[10px] text-red-400 mt-3 italic font-sans italic">Troubleshooting: If you recently added the GEMINI_API_KEY, you MUST push a new commit to GitHub to trigger a redeploy of the Function code.</p>
             </div>
         </div>
 
@@ -35,7 +39,7 @@
         <div id="content-area" class="space-y-8"></div>
 
         <footer class="mt-12 pt-6 border-t border-slate-200 text-center text-[10px] text-slate-400 uppercase tracking-widest">
-            Powered by Gemini 1.5 Flash · English Edition
+            Powered by Gemini · Data ground truth via Google Search Grounding
         </footer>
     </div>
 
@@ -53,9 +57,10 @@
                 document.getElementById('error-container').classList.add('hidden');
                 document.getElementById('notice-area').classList.add('hidden');
             },
-            showError: (msg) => {
-                document.getElementById('error-text').textContent = msg;
+            showError: (details) => {
+                document.getElementById('error-text').textContent = typeof details === 'object' ? JSON.stringify(details, null, 2) : details;
                 document.getElementById('error-container').classList.remove('hidden');
+                document.getElementById('meta-text').textContent = "Connection failed.";
             },
             showNotice: (msg) => {
                 const area = document.getElementById('notice-area');
@@ -68,17 +73,17 @@
             },
             createSkeleton: () => {
                 const container = document.getElementById('content-area');
-                for (let i = 0; i < 3; i++) {
+                for (let i = 0; i < 4; i++) {
                     const skel = document.createElement('div');
                     skel.className = 'p-6 bg-white border border-slate-200 rounded-2xl space-y-4';
-                    skel.innerHTML = '<div class="skeleton h-4 w-1/4 rounded"></div><div class="skeleton h-3 w-full rounded"></div>';
+                    skel.innerHTML = '<div class="skeleton h-4 w-1/4 rounded"></div><div class="skeleton h-3 w-full rounded"></div><div class="skeleton h-3 w-2/3 rounded"></div>';
                     container.appendChild(skel);
                 }
             },
             render: (data) => {
                 const container = document.getElementById('content-area');
                 container.replaceChildren();
-                document.getElementById('meta-text').textContent = `${data.date || 'Today'} · Update Complete`;
+                document.getElementById('meta-text').textContent = `Intelligence updated for ${data.date || 'Today'}`;
 
                 if (data.isFallback) {
                     UI.showNotice("Real-time search is currently restricted by API quota. Showing latest available AI knowledge.");
@@ -87,17 +92,27 @@
                 SECTIONS.forEach(sec => {
                     const items = data[sec.id] || [];
                     const section = document.createElement('section');
-                    section.innerHTML = `<div class="flex items-center gap-3 mb-4"><span class="px-3 py-1 bg-${sec.color}-50 text-${sec.color}-700 border border-${sec.color}-100 text-[10px] font-bold rounded-full uppercase tracking-tighter">${sec.label}</span><div class="h-[1px] flex-1 bg-slate-100"></div></div>`;
+                    section.innerHTML = `
+                        <div class="flex items-center gap-3 mb-4">
+                            <span class="px-3 py-1 bg-${sec.color}-50 text-${sec.color}-700 border border-${sec.color}-100 text-[10px] font-bold rounded-full uppercase tracking-tighter">${sec.label}</span>
+                            <div class="h-[1px] flex-1 bg-slate-100"></div>
+                        </div>`;
+                    
                     const grid = document.createElement('div');
                     grid.className = 'grid gap-4';
 
                     if (items.length === 0) {
-                        grid.innerHTML = '<p class="text-xs text-slate-400 italic py-2 pl-1">No updates found.</p>';
+                        grid.innerHTML = '<p class="text-xs text-slate-400 italic py-2 pl-1">No major updates found in this category.</p>';
                     } else {
                         items.forEach(item => {
                             const card = document.createElement('div');
                             card.className = `bg-white border border-slate-200 rounded-2xl p-5 border-l-4 border-l-${sec.color}-500 shadow-sm hover:shadow-md transition-shadow`;
-                            card.innerHTML = `<h3 class="text-sm font-bold text-slate-800 mb-2">${item.title}</h3><p class="text-sm text-slate-600 leading-relaxed italic border-l-2 border-slate-50 pl-3 mb-3">${item.summary}</p><div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">${item.source || 'Intelligence Feed'}</div>`;
+                            card.innerHTML = `
+                                <h3 class="text-sm font-bold text-slate-800 mb-2">
+                                    ${item.url ? `<a href="${item.url}" target="_blank" class="hover:text-blue-600 underline underline-offset-4 decoration-slate-200">${item.title}</a>` : item.title}
+                                </h3>
+                                <p class="text-sm text-slate-600 leading-relaxed italic border-l-2 border-slate-50 pl-3 mb-3">${item.summary}</p>
+                                <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">${item.source || 'Intelligence Feed'}</div>`;
                             grid.appendChild(card);
                         });
                     }
@@ -112,16 +127,20 @@
             btn.disabled = true;
             UI.reset();
             UI.createSkeleton();
-            document.getElementById('meta-text').textContent = "Scanning intelligence channels...";
+            document.getElementById('meta-text').textContent = "Authenticating with Gemini...";
 
             try {
                 const res = await fetch('/api/digest');
                 const data = await res.json();
-                if (!res.ok) throw new Error(data.details || data.error || "Server Connection Failure");
+                
+                if (!res.ok) {
+                    UI.showError(data);
+                    return;
+                }
+                
                 UI.render(data);
             } catch (e) {
-                UI.showError(e.message);
-                document.getElementById('content-area').replaceChildren();
+                UI.showError({ message: "Network or Request Error", details: e.message });
             } finally {
                 btn.disabled = false;
             }
