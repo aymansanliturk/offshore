@@ -1,4 +1,5 @@
 // Models tried in order. First successful response wins.
+// Updated: 2026-04-13
 const MODELS = [
   'gemini-2.5-flash',
   'gemini-2.0-flash',
