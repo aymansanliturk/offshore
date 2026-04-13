@@ -1,17 +1,14 @@
 export async function onRequest(context) {
   const { env } = context;
   const API_KEY = env.GEMINI_API_KEY;
-  
-  // We will try these models in order if a 404 occurs
-  const MODELS = ["gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-1.5-flash-001"];
 
-  const searchPrompt = `Search for the latest news (last 48h) regarding offshore wind projects in Denmark. 
-  Categories: infrastructure, legislation, approvals, and projects. 
-  Return a strictly English JSON object.`;
-
-  const fallbackPrompt = `Provide a detailed report on the most significant recent offshore wind energy developments in Denmark based on your internal knowledge. 
-  Categories: infrastructure, legislation, approvals, and projects. 
-  Return a strictly English JSON object.`;
+  // We cycle through these models to avoid the 404 error
+  const MODELS = [
+    "gemini-1.5-flash",
+    "gemini-1.5-flash-latest",
+    "gemini-1.5-pro",
+    "gemini-pro"
+  ];
 
   const schema = {
     type: "OBJECT",
@@ -25,10 +22,10 @@ export async function onRequest(context) {
     required: ["date", "infrastructure", "legislation", "approvals", "projects"]
   };
 
-  async function callGemini(text, useSearch, modelName) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${API_KEY}`;
+  async function callGemini(prompt, model, useSearch) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${API_KEY}`;
     const payload = {
-      contents: [{ parts: [{ text }] }],
+      contents: [{ parts: [{ text: prompt }] }],
       generationConfig: { 
         responseMimeType: "application/json", 
         responseSchema: schema,
@@ -46,64 +43,65 @@ export async function onRequest(context) {
 
   try {
     if (!API_KEY) {
-      return new Response(JSON.stringify({ error: "Configuration Error", details: "GEMINI_API_KEY is missing." }), { status: 500 });
+      return new Response(JSON.stringify({ error: "Configuration Error", details: "API Key is missing in Cloudflare." }), { status: 500 });
     }
 
     let response;
-    let isFallback = false;
-    let lastError = null;
     let successfulModel = null;
+    let isFallback = false;
+    let errors = [];
 
-    // PASS 1: Try searching with models in sequence
+    // PASS 1: Attempt to find a working model WITH Google Search
     for (const model of MODELS) {
-      response = await callGemini(searchPrompt, true, model);
-      if (response.ok) {
-        successfulModel = model;
-        break;
-      }
-      // If quota (429) or forbidden (403/400), we skip to Fallback mode immediately
-      if (response.status === 429 || response.status === 403 || response.status === 400) {
-        break;
-      }
-    }
-
-    // PASS 2: Fallback (Knowledge mode) if Pass 1 failed
-    if (!response || !response.ok) {
-      isFallback = true;
-      for (const model of MODELS) {
-        response = await callGemini(fallbackPrompt, false, model);
+      try {
+        response = await callGemini("Summarize latest offshore wind developments in Denmark from last 48h in English.", model, true);
         if (response.ok) {
           successfulModel = model;
           break;
         }
+        // If it's a 404, we continue to the next model
+        const errData = await response.json();
+        errors.push({ model, status: response.status, data: errData });
+      } catch (e) {
+        errors.push({ model, error: e.message });
       }
     }
 
-    const result = await response.json();
-    
-    if (!response.ok) {
-      return new Response(JSON.stringify({ 
-        error: "Gemini API Failure", 
-        details: `Status ${response.status}: ${JSON.stringify(result.error || result)}`,
-        isFallback
-      }), { status: response.status, headers: { 'Content-Type': 'application/json' } });
+    // PASS 2: If Pass 1 failed (Quota or 404s), try WITHOUT Search
+    if (!successfulModel) {
+      isFallback = true;
+      for (const model of MODELS) {
+        try {
+          response = await callGemini("List current major offshore wind projects in Denmark from your memory in English.", model, false);
+          if (response.ok) {
+            successfulModel = model;
+            break;
+          }
+        } catch (e) { }
+      }
     }
 
-    const jsonString = result.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!jsonString) throw new Error("API returned empty content.");
+    if (!successfulModel) {
+      return new Response(JSON.stringify({ 
+        error: "Exhausted all Gemini models", 
+        details: errors 
+      }), { status: 502, headers: { 'Content-Type': 'application/json' } });
+    }
 
-    const data = JSON.parse(jsonString);
+    const result = await response.json();
+    const jsonStr = result.candidates?.[0]?.content?.parts?.[0]?.text;
+    
+    if (!jsonStr) throw new Error("API returned no content.");
+
+    const data = JSON.parse(jsonStr);
     data.isFallback = isFallback;
     data.modelUsed = successfulModel;
 
     return new Response(JSON.stringify(data), {
-        headers: { "Content-Type": "application/json" }
+      headers: { "Content-Type": "application/json" }
     });
 
   } catch (e) {
-    return new Response(JSON.stringify({ error: "Worker Error", details: e.message }), { 
-      status: 500, 
-      headers: { 'Content-Type': 'application/json' } 
-    });
+    return new Response(JSON.stringify({ error: "Worker Error", details: e.message }), { status: 500 });
   }
 }
