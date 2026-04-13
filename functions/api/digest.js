@@ -2,11 +2,10 @@ export async function onRequest(context) {
   const { env } = context;
   const API_KEY = env.GEMINI_API_KEY;
 
-  // We cycle through these models to avoid the 404 error
+  // Google bazen farklı isimleri kabul ediyor, sırayla deneyeceğiz.
   const MODELS = [
     "gemini-1.5-flash",
     "gemini-1.5-flash-latest",
-    "gemini-1.5-pro",
     "gemini-pro"
   ];
 
@@ -22,14 +21,14 @@ export async function onRequest(context) {
     required: ["date", "infrastructure", "legislation", "approvals", "projects"]
   };
 
-  async function callGemini(prompt, model, useSearch) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${API_KEY}`;
+  async function callGemini(prompt, modelName, useSearch) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${API_KEY}`;
     const payload = {
       contents: [{ parts: [{ text: prompt }] }],
       generationConfig: { 
         responseMimeType: "application/json", 
         responseSchema: schema,
-        temperature: 0.1 
+        temperature: 0.2
       }
     };
     if (useSearch) payload.tools = [{ google_search: {} }];
@@ -43,65 +42,61 @@ export async function onRequest(context) {
 
   try {
     if (!API_KEY) {
-      return new Response(JSON.stringify({ error: "Configuration Error", details: "API Key is missing in Cloudflare." }), { status: 500 });
+      return new Response(JSON.stringify({ error: "Config Error", details: "API Key not found in Environment Variables." }), { status: 500 });
     }
 
     let response;
     let successfulModel = null;
     let isFallback = false;
-    let errors = [];
 
-    // PASS 1: Attempt to find a working model WITH Google Search
+    // AŞAMALI DENEME: Önce Arama Özelliği ile dene
     for (const model of MODELS) {
       try {
-        response = await callGemini("Summarize latest offshore wind developments in Denmark from last 48h in English.", model, true);
+        response = await callGemini("Summarize latest offshore wind news in Denmark from last 48h in English.", model, true);
         if (response.ok) {
           successfulModel = model;
           break;
         }
-        // If it's a 404, we continue to the next model
-        const errData = await response.json();
-        errors.push({ model, status: response.status, data: errData });
-      } catch (e) {
-        errors.push({ model, error: e.message });
-      }
+      } catch (e) { console.error(e); }
     }
 
-    // PASS 2: If Pass 1 failed (Quota or 404s), try WITHOUT Search
+    // FALLBACK: Eğer arama başarısızsa (429/404/400), aramayı Kapatıp tekrar dene
     if (!successfulModel) {
       isFallback = true;
       for (const model of MODELS) {
         try {
-          response = await callGemini("List current major offshore wind projects in Denmark from your memory in English.", model, false);
+          response = await callGemini("Provide a report on current major offshore wind developments in Denmark from your knowledge in English.", model, false);
           if (response.ok) {
             successfulModel = model;
             break;
           }
-        } catch (e) { }
+        } catch (e) { console.error(e); }
       }
     }
 
     if (!successfulModel) {
+      const errorData = await response.json().catch(() => ({}));
       return new Response(JSON.stringify({ 
-        error: "Exhausted all Gemini models", 
-        details: errors 
+        error: "All Models Failed", 
+        details: JSON.stringify(errorData.error || errorData),
+        status: response?.status 
       }), { status: 502, headers: { 'Content-Type': 'application/json' } });
     }
 
     const result = await response.json();
-    const jsonStr = result.candidates?.[0]?.content?.parts?.[0]?.text;
+    const jsonText = result.candidates?.[0]?.content?.parts?.[0]?.text;
     
-    if (!jsonStr) throw new Error("API returned no content.");
+    if (!jsonText) throw new Error("AI returned empty content");
 
-    const data = JSON.parse(jsonStr);
+    const data = JSON.parse(jsonText);
     data.isFallback = isFallback;
-    data.modelUsed = successfulModel;
+    data.model = successfulModel;
 
     return new Response(JSON.stringify(data), {
       headers: { "Content-Type": "application/json" }
     });
 
   } catch (e) {
-    return new Response(JSON.stringify({ error: "Worker Error", details: e.message }), { status: 500 });
+    return new Response(JSON.stringify({ error: "Function Error", details: e.message }), { status: 500 });
   }
 }
