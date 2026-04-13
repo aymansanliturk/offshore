@@ -3,12 +3,19 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'unsafe-inline' https://cdn.tailwindcss.com; connect-src 'self'; style-src 'unsafe-inline';">
+<meta http-equiv="Content-Security-Policy"
+  content="default-src 'self';
+           script-src 'unsafe-inline' https://cdn.tailwindcss.com;
+           connect-src 'self';
+           style-src 'unsafe-inline';">
 <title>Offshore Wind Digest — Denmark</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
   body { background-color: #f8fafc; color: #1e293b; }
-  @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+  @keyframes shimmer {
+    0%   { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
   .skeleton {
     background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
     background-size: 200% 100%;
@@ -24,7 +31,10 @@
       <h1 class="text-2xl font-bold text-slate-900 tracking-tight">Offshore Wind Digest</h1>
       <p id="meta" class="text-sm text-slate-500 mt-1 italic">Loading latest news...</p>
     </div>
-    <button id="refreshBtn" class="px-5 py-2 bg-white border border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 active:bg-slate-100 transition-colors flex items-center gap-2 text-sm font-medium text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed">
+    <button id="refreshBtn"
+      class="px-5 py-2 bg-white border border-slate-200 rounded-xl shadow-sm hover:bg-slate-50
+             active:bg-slate-100 transition-colors flex items-center gap-2 text-sm font-medium
+             text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed">
       <span aria-hidden="true">⟳</span> Refresh
     </button>
   </header>
@@ -32,28 +42,35 @@
   <div id="content" class="space-y-8"></div>
 
   <footer class="mt-12 pt-6 border-t border-slate-200 text-center text-xs text-slate-400">
-    Powered by Gemini Flash · Data via Google Search Grounding when available
+    Powered by Gemini Flash · Real-time search when quota available
   </footer>
 
 </div>
 <script>
 'use strict';
 
+// ── Configuration ─────────────────────────────────────────────────────────────
+
 const CONFIG = {
   API_ENDPOINT: '/api/digest',
+  // Cache key is date-scoped so data refreshes automatically each day.
   CACHE_KEY: 'offshore_digest_' + new Date().toISOString().slice(0, 10),
-  MAX_RETRIES: 3,
-  TIMEOUT_MS: 90000
+  TIMEOUT_MS: 90000,   // 90s — Gemini with search can be slow
+  MAX_RETRIES: 2,      // 1 initial attempt + 1 retry on transient errors
 };
 
 const SECTIONS = [
-  { id: 'infrastructure', label: 'Infrastructure', badge: 'bg-blue-50 text-blue-700 border-blue-200',   accent: 'border-l-blue-500'   },
-  { id: 'legislation',    label: 'Legislation',    badge: 'bg-green-50 text-green-700 border-green-200', accent: 'border-l-green-500'  },
-  { id: 'approvals',      label: 'Approvals',      badge: 'bg-amber-50 text-amber-700 border-amber-200', accent: 'border-l-amber-500'  },
-  { id: 'projects',       label: 'Projects',       badge: 'bg-purple-50 text-purple-700 border-purple-200', accent: 'border-l-purple-500' },
+  { id: 'infrastructure', label: 'Infrastructure',
+    badge: 'bg-blue-50 text-blue-700 border-blue-200',   accent: 'border-l-blue-500'   },
+  { id: 'legislation',    label: 'Legislation',
+    badge: 'bg-green-50 text-green-700 border-green-200', accent: 'border-l-green-500'  },
+  { id: 'approvals',      label: 'Approvals',
+    badge: 'bg-amber-50 text-amber-700 border-amber-200', accent: 'border-l-amber-500'  },
+  { id: 'projects',       label: 'Projects',
+    badge: 'bg-purple-50 text-purple-700 border-purple-200', accent: 'border-l-purple-500' },
 ];
 
-// ── Cache ────────────────────────────────────────────────────────────────────
+// ── Cache ─────────────────────────────────────────────────────────────────────
 
 function saveCache(data) {
   try { localStorage.setItem(CONFIG.CACHE_KEY, JSON.stringify(data)); } catch {}
@@ -63,8 +80,9 @@ function loadCache() {
   try { return JSON.parse(localStorage.getItem(CONFIG.CACHE_KEY)) || null; } catch { return null; }
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── Utilities ─────────────────────────────────────────────────────────────────
 
+/** Return a validated http/https URL or null. Prevents javascript: injection. */
 function safeUrl(url) {
   try {
     const u = new URL(url);
@@ -76,39 +94,38 @@ function setMeta(text) {
   document.getElementById('meta').textContent = text;
 }
 
-function clearContent() {
-  document.getElementById('content').replaceChildren();
-}
-
 // ── UI States ─────────────────────────────────────────────────────────────────
 
+/** Skeleton loader — shown while the Cloudflare Function is processing. */
 function showSkeleton() {
-  setMeta('Scanning maritime news and regulatory updates…');
+  setMeta('Scanning offshore wind news and regulatory updates…');
   const content = document.getElementById('content');
   content.replaceChildren();
   for (let i = 0; i < 4; i++) {
     const card = document.createElement('div');
     card.className = 'p-6 bg-white border border-slate-200 rounded-2xl space-y-3';
-    card.innerHTML = [
-      '<div class="skeleton h-3 w-1/4 rounded"></div>',
-      '<div class="skeleton h-4 w-3/4 rounded mt-1"></div>',
-      '<div class="skeleton h-3 w-full rounded"></div>',
-      '<div class="skeleton h-3 w-2/3 rounded"></div>',
-    ].join('');
+    // Static hardcoded HTML — safe to use innerHTML here (no user/API data).
+    card.innerHTML =
+      '<div class="skeleton h-3 w-1/4 rounded"></div>' +
+      '<div class="skeleton h-4 w-3/4 rounded mt-1"></div>' +
+      '<div class="skeleton h-3 w-full rounded"></div>' +
+      '<div class="skeleton h-3 w-2/3 rounded"></div>';
     content.appendChild(card);
   }
 }
 
-function showError(message) {
+/** Red error box — shown when all retries are exhausted. */
+function showError(message, isQuota = false) {
   setMeta('Failed to load digest');
-  clearContent();
+  const content = document.getElementById('content');
+  content.replaceChildren();
 
   const box = document.createElement('div');
   box.className = 'p-5 bg-red-50 border border-red-200 rounded-2xl space-y-2';
 
   const heading = document.createElement('p');
   heading.className = 'text-sm font-semibold text-red-700';
-  heading.textContent = 'Could not load digest';
+  heading.textContent = isQuota ? 'API quota temporarily exhausted' : 'Could not load digest';
 
   const detail = document.createElement('p');
   detail.className = 'text-sm text-red-600 font-mono break-all';
@@ -116,15 +133,53 @@ function showError(message) {
 
   const hint = document.createElement('p');
   hint.className = 'text-xs text-red-400 pt-1';
-  hint.textContent = 'Ensure GEMINI_API_KEY is set in Cloudflare Dashboard → Settings → Environment Variables, then redeploy.';
+  hint.textContent = isQuota
+    ? 'All available models have hit their rate limit. Please wait a few minutes and click Refresh.'
+    : 'Ensure GEMINI_API_KEY is set in Cloudflare Dashboard → Settings → Environment Variables.';
 
   box.append(heading, detail, hint);
-  document.getElementById('content').appendChild(box);
+  content.appendChild(box);
   document.getElementById('refreshBtn').disabled = false;
+}
+
+/**
+ * Quota countdown box — shown when the backend returns 429.
+ * Counts down in real time, then resolves so the caller can retry once.
+ */
+async function showQuotaCountdown(seconds) {
+  const content = document.getElementById('content');
+  content.replaceChildren();
+
+  const box = document.createElement('div');
+  box.className = 'p-5 bg-amber-50 border border-amber-200 rounded-2xl space-y-2';
+
+  const heading = document.createElement('p');
+  heading.className = 'text-sm font-semibold text-amber-800';
+  heading.textContent = 'API quota limit reached';
+
+  const countdownEl = document.createElement('p');
+  countdownEl.className = 'text-sm text-amber-700';
+
+  const hint = document.createElement('p');
+  hint.className = 'text-xs text-amber-500 pt-1';
+  hint.textContent = 'Retrying automatically once — all three models are being tried with and without search.';
+
+  box.append(heading, countdownEl, hint);
+  content.appendChild(box);
+
+  for (let s = seconds; s > 0; s--) {
+    setMeta(`Quota limit — retrying in ${s}s…`);
+    countdownEl.textContent = `Retrying in ${s} second${s !== 1 ? 's' : ''}…`;
+    await new Promise(r => setTimeout(r, 1000));
+  }
 }
 
 // ── Render ────────────────────────────────────────────────────────────────────
 
+/**
+ * Render the digest data into the content area.
+ * All AI-provided text is set via textContent — never innerHTML.
+ */
 function renderDigest(data) {
   const total = SECTIONS.reduce((sum, s) => sum + (data[s.id]?.length || 0), 0);
   setMeta(`${data.date || 'Today'} · ${total} item${total !== 1 ? 's' : ''} across 4 categories`);
@@ -132,33 +187,39 @@ function renderDigest(data) {
   const content = document.getElementById('content');
   content.replaceChildren();
 
-  // Fallback notice — shown when real-time search was unavailable
+  // Fallback notice — search grounding was unavailable, showing AI knowledge.
   if (data.isFallback) {
     const notice = document.createElement('div');
-    notice.className = 'flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-700';
+    notice.className =
+      'flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-2xl';
 
     const icon = document.createElement('span');
+    icon.className = 'text-amber-500 mt-px shrink-0 text-sm';
     icon.textContent = '⚠';
-    icon.className = 'mt-px shrink-0';
 
     const msg = document.createElement('span');
-    msg.textContent = 'Real-time search is currently restricted by API quota — showing latest available AI knowledge. Data may not reflect today\'s news.';
+    msg.className = 'text-xs text-amber-700';
+    msg.textContent =
+      'Note: Search quota limited. Showing latest available AI insights. ' +
+      'Data may not reflect today\'s most recent news.';
 
     notice.append(icon, msg);
     content.appendChild(notice);
   }
 
+  // Render each section.
   SECTIONS.forEach(section => {
     const items = Array.isArray(data[section.id]) ? data[section.id] : [];
 
     const wrapper = document.createElement('section');
 
-    // Section header
+    // Section header badge + horizontal rule.
     const headerRow = document.createElement('div');
     headerRow.className = 'flex items-center gap-3 mb-4';
 
     const badge = document.createElement('span');
-    badge.className = `px-3 py-1 text-[11px] font-bold rounded-full uppercase tracking-widest border ${section.badge}`;
+    badge.className =
+      `px-3 py-1 text-[11px] font-bold rounded-full uppercase tracking-widest border ${section.badge}`;
     badge.textContent = section.label;
 
     const divider = document.createElement('div');
@@ -167,7 +228,7 @@ function renderDigest(data) {
     headerRow.append(badge, divider);
     wrapper.appendChild(headerRow);
 
-    // Cards
+    // Cards grid.
     const grid = document.createElement('div');
     grid.className = 'grid gap-4';
 
@@ -179,31 +240,36 @@ function renderDigest(data) {
     } else {
       items.forEach(item => {
         const card = document.createElement('div');
-        card.className = `bg-white border border-slate-200 border-l-4 ${section.accent} rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow duration-200`;
+        card.className =
+          `bg-white border border-slate-200 border-l-4 ${section.accent} ` +
+          `rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow duration-200`;
 
-        // Title / link
+        // Title — linked if a valid URL is available.
         const titleEl = document.createElement('div');
         titleEl.className = 'text-sm font-semibold text-slate-800 mb-2';
 
-        const url = item.url ? safeUrl(item.url) : null;
-        if (url) {
+        const validUrl = item.url ? safeUrl(item.url) : null;
+        if (validUrl) {
           const link = document.createElement('a');
-          link.href = url;
+          link.href = validUrl;
           link.target = '_blank';
           link.rel = 'noopener noreferrer';
-          link.className = 'hover:text-blue-600 underline underline-offset-4 decoration-slate-200 hover:decoration-blue-300 transition-colors';
+          link.className =
+            'hover:text-blue-600 underline underline-offset-4 ' +
+            'decoration-slate-200 hover:decoration-blue-300 transition-colors';
           link.textContent = item.title || '(untitled)';
           titleEl.appendChild(link);
         } else {
           titleEl.textContent = item.title || '(untitled)';
         }
 
-        // Summary — italic with subtle left-border for professional look
+        // Summary — italic with left accent border.
         const summary = document.createElement('p');
-        summary.className = 'text-sm text-slate-600 leading-relaxed italic border-l-2 border-slate-100 pl-3 mb-3';
+        summary.className =
+          'text-sm text-slate-600 leading-relaxed italic border-l-2 border-slate-100 pl-3 mb-3';
         summary.textContent = item.summary || '';
 
-        // Source
+        // Source label.
         const source = document.createElement('div');
         source.className = 'text-[11px] font-medium text-slate-400 uppercase tracking-wider';
         source.textContent = item.source || 'Unknown Source';
@@ -220,43 +286,13 @@ function renderDigest(data) {
   document.getElementById('refreshBtn').disabled = false;
 }
 
-// ── Rate-limit countdown ──────────────────────────────────────────────────────
-
-async function showRateLimitCountdown(seconds, attempt, maxAttempts) {
-  const content = document.getElementById('content');
-  content.replaceChildren();
-
-  const box = document.createElement('div');
-  box.className = 'p-5 bg-amber-50 border border-amber-200 rounded-2xl space-y-2';
-
-  const heading = document.createElement('p');
-  heading.className = 'text-sm font-semibold text-amber-800';
-  heading.textContent = 'Temporary API quota limit reached';
-
-  const countdownEl = document.createElement('p');
-  countdownEl.className = 'text-sm text-amber-700';
-
-  const hint = document.createElement('p');
-  hint.className = 'text-xs text-amber-500 pt-1';
-  hint.textContent = `Will retry automatically — attempt ${attempt} of ${maxAttempts}.`;
-
-  box.append(heading, countdownEl, hint);
-  content.appendChild(box);
-
-  for (let s = seconds; s > 0; s--) {
-    setMeta(`Quota limit — retrying in ${s}s…`);
-    countdownEl.textContent = `Retrying in ${s} second${s !== 1 ? 's' : ''}…`;
-    await new Promise(r => setTimeout(r, 1000));
-  }
-}
-
 // ── Core fetch ────────────────────────────────────────────────────────────────
 
 async function runDigest(forceRefresh = false) {
   const btn = document.getElementById('refreshBtn');
   btn.disabled = true;
 
-  // Always check cache first to avoid burning quota on refreshes.
+  // Serve from cache first — avoids burning API quota on every page load.
   if (!forceRefresh) {
     const cached = loadCache();
     if (cached) {
@@ -267,49 +303,57 @@ async function runDigest(forceRefresh = false) {
 
   showSkeleton();
 
-  let lastError = null;
-  let delay = 1500;
+  // The backend already tries 3 models × 2 passes (6 Gemini calls total).
+  // If it returns 429 it means every single model is quota-limited.
+  // We do ONE countdown-and-retry; if that also fails we stop — there is no
+  // value in a longer loop since the quota won't recover in under a minute.
+  let quotaRetried = false;
+  let delay = 2000; // for transient (non-429) errors only
 
   for (let attempt = 0; attempt < CONFIG.MAX_RETRIES; attempt++) {
     try {
       const res = await fetch(CONFIG.API_ENDPOINT, {
-        signal: AbortSignal.timeout(CONFIG.TIMEOUT_MS)
+        signal: AbortSignal.timeout(CONFIG.TIMEOUT_MS),
       });
 
       const data = await res.json();
 
-      // 429 — quota exceeded: show countdown then retry.
       if (res.status === 429) {
-        const waitSecs = data.retryAfter || 60;
-        if (attempt < CONFIG.MAX_RETRIES - 1) {
-          await showRateLimitCountdown(waitSecs, attempt + 2, CONFIG.MAX_RETRIES);
+        // Only retry quota errors once — more retries won't help.
+        if (!quotaRetried) {
+          quotaRetried = true;
+          const waitSecs = data.retryAfter || 60;
+          await showQuotaCountdown(waitSecs);
           showSkeleton();
           continue;
         }
-        throw new Error(`Quota exhausted. Please wait ~${data.retryAfter || 60}s and try again.`);
+        // Second 429 — give up cleanly.
+        showError(
+          `All models are quota-exhausted. Please wait ~${data.retryAfter || 60}s and try again.`,
+          true,
+        );
+        return;
       }
 
       if (!res.ok) {
         throw new Error(data.error || `HTTP ${res.status}`);
       }
 
-      // isFallback is already set in the response body by the backend.
-      // Caching it here means the notice survives page reloads from cache too.
+      // Success — isFallback is set in the body by the backend.
       saveCache(data);
       renderDigest(data);
       return;
 
     } catch (err) {
-      lastError = err;
       if (attempt < CONFIG.MAX_RETRIES - 1) {
         setMeta(`Retrying… (attempt ${attempt + 2}/${CONFIG.MAX_RETRIES})`);
         await new Promise(r => setTimeout(r, delay));
         delay *= 2;
+      } else {
+        showError(err?.message || 'Unknown error — check the browser console for details.');
       }
     }
   }
-
-  showError(lastError?.message || 'Unknown error — check browser console for details.');
 }
 
 document.getElementById('refreshBtn').addEventListener('click', () => runDigest(true));

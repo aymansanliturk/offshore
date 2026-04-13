@@ -1,24 +1,41 @@
-// Models tried in order. First successful response wins.
-// Updated: 2026-04-13
+// Cloudflare Pages Function — functions/api/digest.js
+//
+// Two-pass strategy to handle "limit: 0" search grounding quota:
+//   Pass 1 — call Gemini WITH Google Search tool (real-time data)
+//   Pass 2 — call Gemini WITHOUT search tool (AI knowledge fallback)
+//
+// Each pass tries every model in MODELS in order until one succeeds.
+// Any non-200 from a model skips to the next; only when every model
+// in a pass fails does we move to the next pass.
+
 const MODELS = [
-  'gemini-2.5-flash',
-  'gemini-2.0-flash',
-  'gemini-1.5-flash',
+  'gemini-2.5-flash',   // preferred — newest
+  'gemini-2.0-flash',   // stable fallback
+  'gemini-1.5-flash',   // last resort
 ];
 
-const SEARCH_PROMPT = `Search for the latest news (last 48 hours) about offshore wind energy in Denmark.
-Scan English, Danish, German, and Dutch sources thoroughly.
-Categorize every relevant item into exactly one of: infrastructure, legislation, approvals, projects.
-For each item provide: a concise title, a 2–3 sentence summary, the source publication name, and the article URL.
-IMPORTANT: All titles, summaries, and source names must be written in English regardless of the original source language.
-Return today's date as the "date" field (ISO format: YYYY-MM-DD).
-Return the response in the requested JSON format only — no markdown, no commentary.`;
+// ── Prompts ───────────────────────────────────────────────────────────────────
 
-const FALLBACK_PROMPT = `You are an offshore wind energy analyst. Based on your training knowledge, provide a structured report on Danish offshore wind energy developments. Cover: infrastructure construction and planning, legislation and policy, regulatory approvals, and notable projects.
-For each item provide a concise title, a 2–3 sentence summary, the source or organisation name, and a URL if known (otherwise leave it empty).
-IMPORTANT: All titles, summaries, and source names must be written in English regardless of the original source language.
-Return today's date (${new Date().toISOString().slice(0, 10)}) as the "date" field.
-Return the response in the requested JSON format only — no markdown, no commentary.`;
+const SEARCH_PROMPT = `
+Search for the latest news from the past 48 hours about offshore wind energy in Denmark.
+Scan English, Danish, German, and Dutch sources.
+Categorize each item into exactly one of: infrastructure, legislation, approvals, projects.
+For every item include: a concise title, a 2–3 sentence summary, the source publication name, and the article URL.
+IMPORTANT: All output — titles, summaries, and source names — must be in English regardless of the original language.
+Return today's date as the "date" field (format: Month DD, YYYY — e.g. "April 13, 2026").
+Return valid JSON only. No markdown, no prose outside the JSON.
+`.trim();
+
+const FALLBACK_PROMPT = `
+You are a senior offshore wind energy analyst. Based solely on your training knowledge, produce a structured briefing on Danish offshore wind developments.
+Cover all four areas: infrastructure (construction & planning), legislation (policy & regulation), approvals (permits & consents), projects (announcements & progress).
+For every item include: a concise title, a 2–3 sentence summary, the source or organisation name, and a URL if you know one (empty string if not).
+IMPORTANT: All output — titles, summaries, and source names — must be in English regardless of the original language.
+Return today's date as the "date" field (format: Month DD, YYYY — e.g. "${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}").
+Return valid JSON only. No markdown, no prose outside the JSON.
+`.trim();
+
+// ── Schema ────────────────────────────────────────────────────────────────────
 
 const ITEM_SCHEMA = {
   type: 'OBJECT',
@@ -43,6 +60,8 @@ const RESPONSE_SCHEMA = {
   required: ['date', 'infrastructure', 'legislation', 'approvals', 'projects'],
 };
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
 function buildBody(prompt, useSearch) {
   const body = {
     contents: [{ parts: [{ text: prompt }] }],
@@ -57,22 +76,23 @@ function buildBody(prompt, useSearch) {
 
 /**
  * Try every model in MODELS with the given request body.
- * Any non-200 response skips to the next model — this lets Pass 1 (with
- * search) fall through entirely to Pass 2 (without search) on any error,
- * whether it's a quota limit (429), unsupported feature (400), model
- * unavailable (404), or a transient server error (503).
  *
- * Returns:
+ * Any non-200 response skips to the next model.
+ * This means a 429 on search quota will fall through to the next model
+ * (different quota bucket), and if all models fail, to Pass 2 (no search).
+ *
+ * Returns one of:
  *   { type: 'success', text, model }
- *   { type: 'quota',   retryAfter }   — all models returned 429
- *   { type: 'skip',    reason }       — all models returned other non-2xx
+ *   { type: 'quota',   retryAfter }  — every model returned 429
+ *   { type: 'skip',    reason }      — every model returned other non-2xx
  */
 async function tryModels(requestBody, apiKey) {
-  let quotaRetryAfter = null;
-  const skipReasons = [];
+  let maxRetryAfter = null;
+  const reasons = [];
 
   for (const model of MODELS) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    const url =
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
     let res;
     try {
@@ -82,68 +102,39 @@ async function tryModels(requestBody, apiKey) {
         body: JSON.stringify(requestBody),
       });
     } catch (err) {
-      skipReasons.push(`${model} (network error: ${err.message})`);
+      reasons.push(`${model}: network error (${err.message})`);
       continue;
     }
 
     if (!res.ok) {
-      // Track the longest Retry-After seen across any 429.
       if (res.status === 429) {
         const after = parseInt(res.headers.get('Retry-After') || '60', 10);
-        if (quotaRetryAfter === null || after > quotaRetryAfter) quotaRetryAfter = after;
+        if (maxRetryAfter === null || after > maxRetryAfter) maxRetryAfter = after;
       }
-      skipReasons.push(`${model} (HTTP ${res.status})`);
+      reasons.push(`${model}: HTTP ${res.status}`);
       continue;
     }
 
     const result = await res.json();
     const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+
     if (!text) {
-      skipReasons.push(`${model} (empty response)`);
+      reasons.push(`${model}: empty response`);
       continue;
     }
 
     return { type: 'success', text, model };
   }
 
-  if (quotaRetryAfter !== null) return { type: 'quota', retryAfter: quotaRetryAfter };
-  return { type: 'skip', reason: skipReasons.join('; ') };
+  if (maxRetryAfter !== null) return { type: 'quota', retryAfter: maxRetryAfter };
+  return { type: 'skip', reason: reasons.join('; ') };
 }
 
-export async function onRequest(context) {
-  const API_KEY = context.env.GEMINI_API_KEY;
-
-  if (!API_KEY) {
-    return json({ error: 'GEMINI_API_KEY is not configured. Set it in Cloudflare Dashboard → Settings → Environment Variables.' }, 500);
-  }
-
-  // ── Pass 1: with Google Search grounding ─────────────────────────────────
-  const searchResult = await tryModels(buildBody(SEARCH_PROMPT, true), API_KEY);
-
-  if (searchResult.type === 'success') {
-    return respond(searchResult.text, false, searchResult.model);
-  }
-
-  // Pass 1 fully blocked (any combination of 400/404/429/5xx across all models).
-  // ── Pass 2: AI knowledge fallback — no search tool ───────────────────────
-  const fallbackResult = await tryModels(buildBody(FALLBACK_PROMPT, false), API_KEY);
-
-  if (fallbackResult.type === 'success') {
-    return respond(fallbackResult.text, true, fallbackResult.model);
-  }
-
-  // Both passes exhausted — all models are quota-limited.
-  if (fallbackResult.type === 'quota') {
-    return json({
-      error: 'All Gemini models are quota-exhausted. Please wait before retrying.',
-      retryAfter: fallbackResult.retryAfter,
-    }, 429);
-  }
-
-  return json({ error: `No working Gemini model found. ${fallbackResult.reason}` }, 502);
-}
-
-/** Inject isFallback into the Gemini JSON text and return a Response. */
+/**
+ * Parse Gemini's JSON text, inject isFallback, and return a Response.
+ * isFallback is included in the body (not just a header) so it survives
+ * localStorage caching and is available without re-fetching.
+ */
 function respond(geminiText, isFallback, model) {
   try {
     const data = JSON.parse(geminiText);
@@ -152,18 +143,58 @@ function respond(geminiText, isFallback, model) {
       headers: {
         'Content-Type': 'application/json',
         'X-Model-Used': model,
-        'X-Search-Status': isFallback ? 'disabled' : 'enabled',
       },
     });
   } catch {
-    // Extremely unlikely — schema-enforced response should always be valid JSON.
-    return json({ error: 'Failed to parse Gemini response as JSON.' }, 502);
+    return jsonResponse(
+      { error: 'Failed to parse Gemini response. The model may have returned malformed JSON.' },
+      502,
+    );
   }
 }
 
-function json(data, status = 200) {
+function jsonResponse(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
     headers: { 'Content-Type': 'application/json' },
   });
+}
+
+// ── Handler ───────────────────────────────────────────────────────────────────
+
+export async function onRequest(context) {
+  const API_KEY = context.env.GEMINI_API_KEY;
+
+  if (!API_KEY) {
+    return jsonResponse({
+      error: 'GEMINI_API_KEY is not set. Add it in Cloudflare Dashboard → Pages project → Settings → Environment Variables.',
+    }, 500);
+  }
+
+  // Pass 1: real-time data via Google Search grounding.
+  const pass1 = await tryModels(buildBody(SEARCH_PROMPT, true), API_KEY);
+
+  if (pass1.type === 'success') {
+    return respond(pass1.text, false, pass1.model);
+  }
+
+  // Pass 1 blocked (search quota limit:0, 400, 404, or 5xx on all models).
+  // Pass 2: AI knowledge — no search tool, higher chance of success.
+  const pass2 = await tryModels(buildBody(FALLBACK_PROMPT, false), API_KEY);
+
+  if (pass2.type === 'success') {
+    return respond(pass2.text, true, pass2.model);
+  }
+
+  // Both passes exhausted — base model quota is also depleted.
+  if (pass2.type === 'quota') {
+    return jsonResponse({
+      error: 'All Gemini models are temporarily quota-exhausted. Please try again shortly.',
+      retryAfter: pass2.retryAfter,
+    }, 429);
+  }
+
+  return jsonResponse({
+    error: `No working Gemini model found. Details: ${pass2.reason}`,
+  }, 502);
 }
