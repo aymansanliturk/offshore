@@ -15,18 +15,15 @@
         <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 border-b border-slate-200 pb-6">
             <div>
                 <h1 class="text-2xl font-bold tracking-tight text-slate-900">Offshore Wind Digest</h1>
-                <p id="meta-text" class="text-sm text-slate-500 mt-1 italic">Initializing intelligence feed...</p>
+                <p id="meta-text" class="text-sm text-slate-500 mt-1 italic">Initializing...</p>
             </div>
-            <button id="refresh-btn" class="px-5 py-2 bg-white border border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 active:scale-95 transition-all text-sm font-medium flex items-center gap-2">
-                <span>⟳</span> Refresh
-            </button>
+            <button id="refresh-btn" class="px-5 py-2 bg-white border border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 active:scale-95 transition-all text-sm font-medium">Refresh</button>
         </header>
 
-        <div id="error-box" class="mb-6 hidden">
+        <div id="diag-box" class="mb-6 hidden">
             <div class="p-5 bg-red-50 border border-red-200 rounded-2xl">
-                <p class="text-sm font-bold text-red-800">Connection Error</p>
-                <div id="error-details" class="text-xs text-red-700 mt-2 font-mono break-all whitespace-pre-wrap bg-white/50 p-3 rounded border border-red-100"></div>
-                <p class="text-[10px] text-red-400 mt-3 italic">Troubleshooting: Ensure GEMINI_API_KEY is set in Cloudflare and you have pushed a NEW commit to GitHub.</p>
+                <p class="text-sm font-bold text-red-800">System Diagnostic</p>
+                <div id="diag-text" class="text-xs text-red-700 mt-2 font-mono bg-white/50 p-3 rounded border border-red-100 break-all whitespace-pre-wrap"></div>
             </div>
         </div>
 
@@ -34,7 +31,7 @@
         <div id="content-area" class="space-y-8"></div>
 
         <footer class="mt-12 pt-6 border-t border-slate-200 text-center text-[10px] text-slate-400 uppercase tracking-widest">
-            Powered by Gemini · Automated Maritime Intelligence
+            Powered by Gemini 1.5 Flash · 100% English Edition
         </footer>
     </div>
 
@@ -49,13 +46,12 @@
         const UI = {
             reset: () => {
                 document.getElementById('content-area').replaceChildren();
-                document.getElementById('error-box').classList.add('hidden');
+                document.getElementById('diag-box').classList.add('hidden');
                 document.getElementById('notice-area').classList.add('hidden');
             },
-            showError: (msg) => {
-                document.getElementById('error-details').textContent = msg;
-                document.getElementById('error-box').classList.remove('hidden');
-                document.getElementById('meta-text').textContent = "Update failed.";
+            showDiag: (msg) => {
+                document.getElementById('diag-text').textContent = msg;
+                document.getElementById('diag-box').classList.remove('hidden');
             },
             showNotice: (msg) => {
                 const area = document.getElementById('notice-area');
@@ -78,36 +74,26 @@
             render: (data) => {
                 const container = document.getElementById('content-area');
                 container.replaceChildren();
-                document.getElementById('meta-text').textContent = `${data.date || 'Today'} · Feed Updated`;
+                document.getElementById('meta-text').textContent = `${data.date || 'Today'} · Update Complete`;
 
                 if (data.isFallback) {
-                    UI.showNotice("Real-time search restricted by quota. Showing latest available AI knowledge.");
+                    UI.showNotice("Note: Real-time search is currently limited. Data is based on AI knowledge.");
                 }
 
                 SECTIONS.forEach(sec => {
                     const items = data[sec.id] || [];
                     const section = document.createElement('section');
-                    section.innerHTML = `
-                        <div class="flex items-center gap-3 mb-4">
-                            <span class="px-3 py-1 bg-${sec.color}-50 text-${sec.color}-700 border border-${sec.color}-100 text-[10px] font-bold rounded-full uppercase tracking-tighter">${sec.label}</span>
-                            <div class="h-[1px] flex-1 bg-slate-100"></div>
-                        </div>`;
-                    
+                    section.innerHTML = `<div class="flex items-center gap-3 mb-4"><span class="px-3 py-1 bg-${sec.color}-50 text-${sec.color}-700 border border-${sec.color}-100 text-[10px] font-bold rounded-full uppercase tracking-tighter">${sec.label}</span><div class="h-[1px] flex-1 bg-slate-100"></div></div>`;
                     const grid = document.createElement('div');
                     grid.className = 'grid gap-4';
 
                     if (items.length === 0) {
-                        grid.innerHTML = '<p class="text-xs text-slate-400 italic py-2">No updates found.</p>';
+                        grid.innerHTML = '<p class="text-xs text-slate-400 italic py-2">No items found.</p>';
                     } else {
                         items.forEach(item => {
                             const card = document.createElement('div');
                             card.className = `bg-white border border-slate-200 rounded-2xl p-5 border-l-4 border-l-${sec.color}-500 shadow-sm`;
-                            card.innerHTML = `
-                                <h3 class="text-sm font-bold text-slate-800 mb-2">
-                                    ${item.url ? `<a href="${item.url}" target="_blank" class="hover:text-blue-600 underline underline-offset-4 decoration-slate-200">${item.title}</a>` : item.title}
-                                </h3>
-                                <p class="text-sm text-slate-600 leading-relaxed italic border-l-2 border-slate-50 pl-3 mb-3">${item.summary}</p>
-                                <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">${item.source || 'Intel Report'}</div>`;
+                            card.innerHTML = `<h3 class="text-sm font-bold text-slate-800 mb-2">${item.title}</h3><p class="text-sm text-slate-600 leading-relaxed italic border-l-2 border-slate-50 pl-3 mb-3">${item.summary}</p><div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">${item.source || 'Intel Report'}</div>`;
                             grid.appendChild(card);
                         });
                     }
@@ -117,12 +103,12 @@
             }
         };
 
-        async function run() {
+        async function load() {
             const btn = document.getElementById('refresh-btn');
             btn.disabled = true;
             UI.reset();
             UI.createSkeleton();
-            document.getElementById('meta-text').textContent = "Contacting intelligence servers...";
+            document.getElementById('meta-text').textContent = "Scanning intelligence channels...";
 
             try {
                 const res = await fetch('/api/digest');
@@ -132,24 +118,25 @@
                 try {
                     data = JSON.parse(text);
                 } catch (e) {
-                    if (text.toLowerCase().includes('<!doctype html>')) {
-                        throw new Error("Backend Crash (500). The server returned an HTML error page. This usually means your Functions code has a syntax error or failed to initialize.");
-                    }
-                    throw new Error("Invalid response format: " + text.slice(0, 100));
+                    throw new Error("Raw Response Error: " + text.slice(0, 500));
                 }
 
-                if (!res.ok) throw new Error(data.details || data.error || "Server error");
-                
-                UI.render(data);
+                if (data.error) {
+                    UI.showDiag(`${data.error}: ${data.details}`);
+                    document.getElementById('content-area').replaceChildren();
+                } else {
+                    UI.render(data);
+                }
             } catch (e) {
-                UI.showError(e.message);
+                UI.showDiag(e.message);
+                document.getElementById('content-area').replaceChildren();
             } finally {
                 btn.disabled = false;
             }
         }
 
-        document.getElementById('refresh-btn').onclick = run;
-        window.onload = run;
+        document.getElementById('refresh-btn').onclick = load;
+        window.onload = load;
     </script>
 </body>
 </html>
