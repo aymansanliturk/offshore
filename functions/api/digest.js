@@ -1,7 +1,10 @@
-// Models tried in order. First one that isn't a 404 wins.
+// Models tried in order. First successful response wins.
+// 400/404 → model unavailable/incompatible, skip to next.
+// 429 → quota exhausted on this model, skip to next (each model has its own quota).
 const MODELS = [
   'gemini-2.5-flash',
   'gemini-2.0-flash',
+  'gemini-1.5-flash',
 ];
 
 export async function onRequest(context) {
@@ -49,7 +52,8 @@ Return the response in the requested JSON format only — no markdown, no commen
     },
   };
 
-  let lastError = null;
+  let lastSkipReason = null;
+  let quotaRetryAfter = null; // set if any model returned 429
 
   for (const model of MODELS) {
     const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${API_KEY}`;
@@ -61,21 +65,25 @@ Return the response in the requested JSON format only — no markdown, no commen
         body: JSON.stringify(requestBody),
       });
 
+      // 400 = model exists but rejects this request body
+      //       (e.g. google_search + responseSchema not supported together).
       // 404 = model not available on this API key.
-      // 400 = model exists but doesn't support this request (e.g. google_search
-      //       + responseSchema combo not supported on this model version).
-      // Either way: skip to the next model in the list.
-      if (geminiRes.status === 404 || geminiRes.status === 400) {
+      // Either way: try the next model.
+      if (geminiRes.status === 400 || geminiRes.status === 404) {
         const errText = await geminiRes.text();
-        lastError = `${model} skipped (HTTP ${geminiRes.status}): ${errText}`;
+        lastSkipReason = `${model} skipped (HTTP ${geminiRes.status})`;
         continue;
       }
 
-      // 429 = quota exceeded — surface immediately, no point trying other models.
+      // 429 = quota exhausted on this model. Each model has its own free-tier
+      // quota, so try the next one — only give up when all are exhausted.
       if (geminiRes.status === 429) {
         const retryAfter = parseInt(geminiRes.headers.get('Retry-After') || '60', 10);
-        const errBody = await geminiRes.text();
-        return json({ error: `Quota exceeded on ${model} — free-tier rate limit reached.`, details: errBody, retryAfter }, 429);
+        if (quotaRetryAfter === null || retryAfter > quotaRetryAfter) {
+          quotaRetryAfter = retryAfter; // track the longest wait needed
+        }
+        lastSkipReason = `${model} quota exhausted (429)`;
+        continue;
       }
 
       if (!geminiRes.ok) {
@@ -100,8 +108,15 @@ Return the response in the requested JSON format only — no markdown, no commen
     }
   }
 
-  // All models returned 404.
-  return json({ error: `No available Gemini model found. Tried: ${MODELS.join(', ')}. Details: ${lastError}` }, 502);
+  // All models were skipped. If any returned 429, tell the frontend to retry.
+  if (quotaRetryAfter !== null) {
+    return json({
+      error: `All models quota-exhausted. Tried: ${MODELS.join(', ')}.`,
+      retryAfter: quotaRetryAfter,
+    }, 429);
+  }
+
+  return json({ error: `No working Gemini model found. Tried: ${MODELS.join(', ')}. Last reason: ${lastSkipReason}` }, 502);
 }
 
 function json(data, status = 200) {
