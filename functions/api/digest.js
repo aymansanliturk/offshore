@@ -12,7 +12,14 @@ export async function onRequest(context) {
       }), { status: 200, headers: { "Content-Type": "application/json" } });
     }
 
-    const MODEL = "gemini-1.5-flash";
+    // List of model IDs to try in order to avoid 404 errors on v1beta
+    const MODELS = [
+      "gemini-1.5-flash-latest",
+      "gemini-1.5-flash",
+      "gemini-1.5-pro-latest",
+      "gemini-1.5-pro"
+    ];
+
     const schema = {
       type: "OBJECT",
       properties: {
@@ -25,46 +32,78 @@ export async function onRequest(context) {
       required: ["date", "infrastructure", "legislation", "approvals", "projects"]
     };
 
-    const callGemini = async (prompt, useSearch) => {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${API_KEY}`;
+    const callGemini = async (prompt, model, useSearch) => {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${API_KEY}`;
       const payload = {
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: { responseMimeType: "application/json", responseSchema: schema, temperature: 0.1 }
       };
       if (useSearch) payload.tools = [{ google_search: {} }];
 
-      const res = await fetch(url, {
+      return await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      return res;
     };
 
-    // Attempt 1: Search
-    let response = await callGemini("Summarize latest offshore wind developments in Denmark from last 48h in English.", true);
+    let response;
+    let successfulModel = null;
     let isFallback = false;
+    let errors = [];
 
-    // Fallback if anything goes wrong with search (429, 400, 403, 404)
-    if (!response.ok) {
-      isFallback = true;
-      response = await callGemini("Report on major offshore wind energy projects in Denmark from your knowledge in English.", false);
+    // PASS 1: Attempt to find a working model WITH Google Search
+    for (const model of MODELS) {
+      try {
+        response = await callGemini("Summarize latest offshore wind developments in Denmark from last 48h in English.", model, true);
+        if (response.ok) {
+          successfulModel = model;
+          break;
+        }
+        const errJson = await response.json().catch(() => ({}));
+        errors.push({ model, status: response.status, details: errJson });
+        
+        // If it's a 429 (Quota) or 403 (Forbidden), we don't cycle models for Search, 
+        // we just move to the knowledge fallback to save time.
+        if (response.status === 429 || response.status === 403 || response.status === 400) break;
+      } catch (e) {
+        errors.push({ model, error: e.message });
+      }
     }
 
-    const result = await response.json();
+    // PASS 2: If Pass 1 failed entirely, attempt WITHOUT Google Search (Internal Knowledge)
+    if (!successfulModel) {
+      isFallback = true;
+      for (const model of MODELS) {
+        try {
+          response = await callGemini("Report on major offshore wind energy projects in Denmark from your knowledge in English.", model, false);
+          if (response.ok) {
+            successfulModel = model;
+            break;
+          }
+          const errJson = await response.json().catch(() => ({}));
+          errors.push({ fallback_model: model, status: response.status, details: errJson });
+        } catch (e) {
+          errors.push({ fallback_model: model, error: e.message });
+        }
+      }
+    }
 
-    if (!response.ok) {
+    if (!successfulModel) {
       return new Response(JSON.stringify({ 
-        error: "Gemini API Error", 
-        details: JSON.stringify(result.error || result) 
+        error: "All Gemini Models Failed", 
+        details: errors 
       }), { status: 200, headers: { "Content-Type": "application/json" } });
     }
 
+    const result = await response.json();
     const jsonStr = result.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!jsonStr) throw new Error("API returned no content.");
+    
+    if (!jsonStr) throw new Error(`API returned empty content for model ${successfulModel}`);
 
     const data = JSON.parse(jsonStr);
     data.isFallback = isFallback;
+    data.modelUsed = successfulModel;
 
     return new Response(JSON.stringify(data), {
       headers: { "Content-Type": "application/json" }
