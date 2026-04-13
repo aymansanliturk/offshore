@@ -59,6 +59,14 @@
             { id: "projects",       label: "Projects",       color: "purple" }
         ];
 
+        // List of model IDs to cycle through if a 404 occurs
+        const MODELS = [
+            "gemini-1.5-flash-latest",
+            "gemini-1.5-flash",
+            "gemini-1.5-pro-latest",
+            "gemini-1.5-pro"
+        ];
+
         const UI = {
             status: (txt) => document.getElementById('status-text').textContent = txt,
             msg: (txt, type='error') => {
@@ -78,35 +86,33 @@
             }
         };
 
+        const SCHEMA = {
+            type: "OBJECT",
+            properties: {
+                date: { type: "STRING" },
+                infrastructure: { type: "ARRAY", items: { type: "OBJECT", properties: { title: {type:"STRING"}, summary: {type:"STRING"}, source: {type:"STRING"}, url: {type:"STRING"} } } },
+                legislation: { type: "ARRAY", items: { type: "OBJECT", properties: { title: {type:"STRING"}, summary: {type:"STRING"}, source: {type:"STRING"}, url: {type:"STRING"} } } },
+                approvals: { type: "ARRAY", items: { type: "OBJECT", properties: { title: {type:"STRING"}, summary: {type:"STRING"}, source: {type:"STRING"}, url: {type:"STRING"} } } },
+                projects: { type: "ARRAY", items: { type: "OBJECT", properties: { title: {type:"STRING"}, summary: {type:"STRING"}, source: {type:"STRING"}, url: {type:"STRING"} } } }
+            },
+            required: ["date", "infrastructure", "legislation", "approvals", "projects"]
+        };
+
         // API Logic
-        async function fetchFromGemini(apiKey, useSearch = true) {
-            const model = "gemini-1.5-flash"; // Fixed to most reliable version
+        async function fetchFromGemini(apiKey, model, useSearch = true) {
             const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
             
             const prompt = `Search for the latest 48h news on offshore wind in Denmark. 
             Return a strictly English JSON object with categories: infrastructure, legislation, approvals, projects. 
             Each item needs: title, summary (2 sentences), source, url.`;
 
-            const schema = {
-                type: "OBJECT",
-                properties: {
-                    date: { type: "STRING" },
-                    infrastructure: { type: "ARRAY", items: { type: "OBJECT", properties: { title: {type:"STRING"}, summary: {type:"STRING"}, source: {type:"STRING"}, url: {type:"STRING"} } } },
-                    legislation: { type: "ARRAY", items: { type: "OBJECT", properties: { title: {type:"STRING"}, summary: {type:"STRING"}, source: {type:"STRING"}, url: {type:"STRING"} } } },
-                    approvals: { type: "ARRAY", items: { type: "OBJECT", properties: { title: {type:"STRING"}, summary: {type:"STRING"}, source: {type:"STRING"}, url: {type:"STRING"} } } },
-                    projects: { type: "ARRAY", items: { type: "OBJECT", properties: { title: {type:"STRING"}, summary: {type:"STRING"}, source: {type:"STRING"}, url: {type:"STRING"} } } }
-                },
-                required: ["date", "infrastructure", "legislation", "approvals", "projects"]
-            };
-
             const payload = {
                 contents: [{ parts: [{ text: prompt }] }],
-                generationConfig: { responseMimeType: "application/json", responseSchema: schema }
+                generationConfig: { responseMimeType: "application/json", responseSchema: SCHEMA, temperature: 0.1 }
             };
             if (useSearch) payload.tools = [{ google_search: {} }];
 
-            const res = await fetch(url, { method: 'POST', body: JSON.stringify(payload) });
-            return res;
+            return await fetch(url, { method: 'POST', body: JSON.stringify(payload) });
         }
 
         async function start() {
@@ -118,39 +124,59 @@
             }
 
             UI.skeleton();
-            UI.status("Connecting to Google AI...");
+            UI.status("Initializing AI models...");
 
-            try {
-                // Attempt 1: Search
-                let res = await fetchFromGemini(key, true);
-                let fallback = false;
+            let success = false;
+            let lastError = null;
 
-                // If Search tool is restricted (Quota 0), retry without it automatically
-                if (res.status === 429 || res.status === 400) {
-                    UI.status("Search quota limit hit. Retrying in Knowledge Mode...");
-                    res = await fetchFromGemini(key, false);
-                    fallback = true;
+            // Model Cycling Logic to bypass 404 errors
+            for (const model of MODELS) {
+                try {
+                    UI.status(`Connecting to ${model}...`);
+                    
+                    // Attempt with Search
+                    let res = await fetchFromGemini(key, model, true);
+                    let fallback = false;
+
+                    // Handle Quota/Search Tool restrictions
+                    if (res.status === 429 || res.status === 400) {
+                        UI.status("Search limited. Retrying Knowledge Mode...");
+                        res = await fetchFromGemini(key, model, false);
+                        fallback = true;
+                    }
+
+                    // If still fails with 404, try next model
+                    if (res.status === 404) {
+                        lastError = `Model ${model} not found.`;
+                        continue; 
+                    }
+
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(JSON.stringify(data.error || data));
+
+                    const content = JSON.parse(data.candidates[0].content.parts[0].text);
+                    render(content, fallback, model);
+                    success = true;
+                    break;
+
+                } catch (e) {
+                    lastError = e.message;
                 }
+            }
 
-                const data = await res.json();
-                if (!res.ok) throw new Error(JSON.stringify(data.error || data));
-
-                const content = JSON.parse(data.candidates[0].content.parts[0].text);
-                render(content, fallback);
-
-            } catch (e) {
-                UI.msg(e.message);
+            if (!success) {
+                UI.msg(`Final Error: ${lastError}`);
                 UI.status("Failed.");
             }
         }
 
-        function render(data, isFallback) {
-            UI.status(`Updated for ${data.date}`);
+        function render(data, isFallback, modelUsed) {
+            UI.status(`Updated via ${modelUsed} for ${data.date}`);
             const container = document.getElementById('content-area');
             container.innerHTML = "";
 
             if (isFallback) {
-                UI.msg("Note: Live search is currently unavailable for your API key. Showing internal AI data.", "warn");
+                UI.msg("Note: Live search is currently unavailable. Showing internal AI data.", "warn");
             }
 
             SECTIONS.forEach(sec => {
