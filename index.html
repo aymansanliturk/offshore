@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'unsafe-inline' https://cdn.tailwindcss.com; connect-src https://generativelanguage.googleapis.com; style-src 'unsafe-inline';">
 <title>Offshore Wind Digest — Denmark</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
@@ -38,6 +39,24 @@
 const apiKey = ""; // Provided automatically by the environment
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'wind-digest-app';
 const CACHE_KEY = `gemini_digest_cache_${appId}`;
+
+function escapeHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function safeUrl(url) {
+  try {
+    const u = new URL(url);
+    return (u.protocol === 'https:' || u.protocol === 'http:') ? url : null;
+  } catch {
+    return null;
+  }
+}
 
 const SECTIONS = [
   { key: "infrastructure", label: "Infrastructure", color: "blue", bg: "bg-blue-50", border: "border-blue-200", text: "text-blue-700" },
@@ -81,11 +100,15 @@ function showSkeleton() {
 
 function showError(msg) {
   document.getElementById("meta").textContent = "An error occurred";
-  document.getElementById("content").innerHTML = `
-    <div class="p-4 bg-red-50 border border-red-100 text-red-600 rounded-xl text-sm">
-      <strong>Error:</strong> ${msg}
-    </div>
-  `;
+  const div = document.createElement("div");
+  div.className = "p-4 bg-red-50 border border-red-100 text-red-600 rounded-xl text-sm";
+  const strong = document.createElement("strong");
+  strong.textContent = "Error: ";
+  div.appendChild(strong);
+  div.appendChild(document.createTextNode(msg));
+  const content = document.getElementById("content");
+  content.innerHTML = "";
+  content.appendChild(div);
   document.getElementById("refreshBtn").disabled = false;
 }
 
@@ -97,17 +120,19 @@ function renderDigest(digest) {
     const items = digest[s.key] || [];
     const cards = items.length === 0
       ? `<div class="text-sm text-slate-400 py-2">No new items found in this category.</div>`
-      : items.map(item => `
+      : items.map(item => {
+          const validUrl = item.url ? safeUrl(item.url) : null;
+          return `
           <div class="card bg-white border border-slate-200 rounded-2xl p-5 shadow-sm border-l-4" style="border-left-color: var(--tw-color-${s.color}-500)">
             <div class="text-sm font-semibold mb-2">
-              ${item.url ? `<a href="${item.url}" target="_blank" class="hover:text-blue-600 underline-offset-4 decoration-blue-200 decoration-2">${item.title}</a>` : item.title}
+              ${validUrl ? `<a href="${escapeHtml(validUrl)}" target="_blank" rel="noopener noreferrer" class="hover:text-blue-600 underline-offset-4 decoration-blue-200 decoration-2">${escapeHtml(item.title)}</a>` : escapeHtml(item.title)}
             </div>
-            <p class="text-sm text-slate-600 leading-relaxed mb-3">${item.summary}</p>
+            <p class="text-sm text-slate-600 leading-relaxed mb-3">${escapeHtml(item.summary)}</p>
             <div class="flex items-center justify-between text-[11px] text-slate-400 font-medium uppercase tracking-wider">
-              <span>${item.source || "Unknown Source"}</span>
+              <span>${escapeHtml(item.source || "Unknown Source")}</span>
             </div>
           </div>
-        `).join("");
+        `;}).join("");
 
     return `
       <section>
