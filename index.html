@@ -25,8 +25,8 @@
         <div id="error-box" class="mb-6 hidden">
             <div class="p-5 bg-red-50 border border-red-200 rounded-2xl">
                 <p class="text-sm font-bold text-red-800">Connection Error</p>
-                <p id="error-details" class="text-xs text-red-700 mt-1 font-mono break-all"></p>
-                <p class="text-[10px] text-red-400 mt-2 italic font-sans italic">Note: If you just added the API key, you MUST push a new commit to GitHub to redeploy.</p>
+                <div id="error-details" class="text-xs text-red-700 mt-2 font-mono break-all whitespace-pre-wrap bg-white/50 p-3 rounded border border-red-100"></div>
+                <p class="text-[10px] text-red-400 mt-3 italic">Troubleshooting: Ensure GEMINI_API_KEY is set in Cloudflare and you have pushed a NEW commit to GitHub.</p>
             </div>
         </div>
 
@@ -34,7 +34,7 @@
         <div id="content-area" class="space-y-8"></div>
 
         <footer class="mt-12 pt-6 border-t border-slate-200 text-center text-[10px] text-slate-400 uppercase tracking-widest">
-            Powered by Gemini · Automated Maritime Intel
+            Powered by Gemini · Automated Maritime Intelligence
         </footer>
     </div>
 
@@ -55,7 +55,7 @@
             showError: (msg) => {
                 document.getElementById('error-details').textContent = msg;
                 document.getElementById('error-box').classList.remove('hidden');
-                document.getElementById('meta-text').textContent = "Failed to load.";
+                document.getElementById('meta-text').textContent = "Update failed.";
             },
             showNotice: (msg) => {
                 const area = document.getElementById('notice-area');
@@ -81,7 +81,7 @@
                 document.getElementById('meta-text').textContent = `${data.date || 'Today'} · Feed Updated`;
 
                 if (data.isFallback) {
-                    UI.showNotice("Real-time search restricted by API quota. Showing latest available AI knowledge.");
+                    UI.showNotice("Real-time search restricted by quota. Showing latest available AI knowledge.");
                 }
 
                 SECTIONS.forEach(sec => {
@@ -122,12 +122,21 @@
             btn.disabled = true;
             UI.reset();
             UI.createSkeleton();
-            document.getElementById('meta-text').textContent = "Scanning intelligence channels...";
+            document.getElementById('meta-text').textContent = "Contacting intelligence servers...";
 
             try {
                 const res = await fetch('/api/digest');
-                const data = await res.json();
-                if (!res.ok) throw new Error(data.details || data.error || "Connection failed.");
+                const text = await res.text(); // Read as text first to avoid "string match" error
+                
+                let data;
+                try {
+                    data = JSON.parse(text);
+                } catch (e) {
+                    throw new Error("Server sent invalid data. This is usually a Cloudflare 500 error page. \n\nRaw Response: " + text.slice(0, 300));
+                }
+
+                if (!res.ok) throw new Error(data.details || data.error || "Server error");
+                
                 UI.render(data);
             } catch (e) {
                 UI.showError(e.message);
