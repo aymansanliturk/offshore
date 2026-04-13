@@ -1,7 +1,7 @@
 export async function onRequest(context) {
   const { env } = context;
   const API_KEY = env.GEMINI_API_KEY;
-  const MODEL = 'gemini-2.5-flash-preview-09-2025';
+  const MODEL = 'gemini-1.5-flash';
 
   if (!API_KEY) {
     return json({ error: 'GEMINI_API_KEY is not configured. Set it in Cloudflare Dashboard → Settings → Environment Variables.' }, 500);
