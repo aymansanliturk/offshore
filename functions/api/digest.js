@@ -1,55 +1,83 @@
-// /functions/api/digest.js
-
 export async function onRequest(context) {
   const { env } = context;
-  const API_KEY = env.GEMINI_API_KEY; // Set this in Cloudflare Dashboard -> Settings -> Variables
-  const MODEL = "gemini-2.5-flash-preview-09-2025";
+  const API_KEY = env.GEMINI_API_KEY;
+  const MODEL = 'gemini-2.5-flash-preview-09-2025';
 
-  const prompt = `Search for the latest news (last 48h) regarding offshore wind in Denmark.
-  Analyze English and Danish sources.
-  Categorize into: infrastructure, legislation, approvals, projects.
-  Return a JSON object with a "date" string and arrays for each category.
-  Each item in arrays must have: "title", "summary" (2 sentences), "source", and "url".`;
+  if (!API_KEY) {
+    return json({ error: 'GEMINI_API_KEY is not configured. Set it in Cloudflare Dashboard → Settings → Environment Variables.' }, 500);
+  }
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${API_KEY}`;
+  const prompt = `Search for the latest news (last 48 hours) about offshore wind energy in Denmark.
+Scan English, Danish, German, and Dutch sources thoroughly.
+Categorize every relevant item into exactly one of: infrastructure, legislation, approvals, projects.
+For each item provide: a concise title, a 2–3 sentence summary in English, the source publication name, and the article URL.
+Return today's date as the "date" field (ISO format: YYYY-MM-DD).
+Return the response in the requested JSON format only — no markdown, no commentary.`;
+
+  const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${API_KEY}`;
+
+  const itemSchema = {
+    type: 'OBJECT',
+    properties: {
+      title:   { type: 'STRING' },
+      summary: { type: 'STRING' },
+      source:  { type: 'STRING' },
+      url:     { type: 'STRING' },
+    },
+    required: ['title', 'summary', 'source', 'url'],
+  };
+
+  const body = {
+    contents: [{ parts: [{ text: prompt }] }],
+    tools: [{ google_search: {} }],
+    generationConfig: {
+      responseMimeType: 'application/json',
+      responseSchema: {
+        type: 'OBJECT',
+        properties: {
+          date:           { type: 'STRING' },
+          infrastructure: { type: 'ARRAY', items: itemSchema },
+          legislation:    { type: 'ARRAY', items: itemSchema },
+          approvals:      { type: 'ARRAY', items: itemSchema },
+          projects:       { type: 'ARRAY', items: itemSchema },
+        },
+        required: ['date', 'infrastructure', 'legislation', 'approvals', 'projects'],
+      },
+    },
+  };
 
   try {
-    const response = await fetch(url, {
+    const geminiRes = await fetch(geminiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        tools: [{ "google_search": {} }],
-        generationConfig: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: "OBJECT",
-            properties: {
-              date: { type: "STRING" },
-              infrastructure: { type: "ARRAY", items: { type: "OBJECT", properties: { title: { type: "STRING" }, summary: { type: "STRING" }, source: { type: "STRING" }, url: { type: "STRING" } } } },
-              legislation:    { type: "ARRAY", items: { type: "OBJECT", properties: { title: { type: "STRING" }, summary: { type: "STRING" }, source: { type: "STRING" }, url: { type: "STRING" } } } },
-              approvals:      { type: "ARRAY", items: { type: "OBJECT", properties: { title: { type: "STRING" }, summary: { type: "STRING" }, source: { type: "STRING" }, url: { type: "STRING" } } } },
-              projects:       { type: "ARRAY", items: { type: "OBJECT", properties: { title: { type: "STRING" }, summary: { type: "STRING" }, source: { type: "STRING" }, url: { type: "STRING" } } } }
-            }
-          }
-        }
-      })
+      body: JSON.stringify(body),
     });
 
-    if (!response.ok) {
-      return new Response(JSON.stringify({ error: `Gemini API error: ${response.status}` }), { status: 502, headers: { "Content-Type": "application/json" } });
+    if (!geminiRes.ok) {
+      const errText = await geminiRes.text();
+      return json({ error: `Gemini API error ${geminiRes.status}: ${errText}` }, 502);
     }
 
-    const result = await response.json();
-    const data = result.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!data) {
-      return new Response(JSON.stringify({ error: "Empty response from Gemini" }), { status: 502, headers: { "Content-Type": "application/json" } });
+    const result = await geminiRes.json();
+    const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+
+    if (!text) {
+      return json({ error: 'Gemini returned an empty response. The model may have been blocked or quota exceeded.' }, 502);
     }
 
-    return new Response(data, {
-      headers: { "Content-Type": "application/json" }
+    // text is already a JSON string matching our schema — return it directly.
+    return new Response(text, {
+      headers: { 'Content-Type': 'application/json' },
     });
-  } catch (e) {
-    return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { "Content-Type": "application/json" } });
+
+  } catch (err) {
+    return json({ error: `Function error: ${err.message}` }, 500);
   }
+}
+
+function json(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  });
 }
