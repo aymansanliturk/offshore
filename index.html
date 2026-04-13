@@ -32,7 +32,7 @@
   <div id="content" class="space-y-8"></div>
 
   <footer class="mt-12 pt-6 border-t border-slate-200 text-center text-xs text-slate-400">
-    Powered by Gemini 2.5 Flash · Real-time data via Google Search Grounding
+    Powered by Gemini 1.5 Flash · Real-time data via Google Search Grounding
   </footer>
 
 </div>
@@ -204,12 +204,43 @@ function renderDigest(data) {
   document.getElementById('refreshBtn').disabled = false;
 }
 
+// ── Rate-limit countdown ──────────────────────────────────────────────────────
+
+async function showRateLimitCountdown(seconds, attempt, maxAttempts) {
+  const content = document.getElementById('content');
+  content.replaceChildren();
+
+  const box = document.createElement('div');
+  box.className = 'p-5 bg-amber-50 border border-amber-200 rounded-2xl space-y-2';
+
+  const heading = document.createElement('p');
+  heading.className = 'text-sm font-semibold text-amber-800';
+  heading.textContent = 'Temporary API quota limit reached';
+
+  const countdownEl = document.createElement('p');
+  countdownEl.className = 'text-sm text-amber-700';
+
+  const hint = document.createElement('p');
+  hint.className = 'text-xs text-amber-500 pt-1';
+  hint.textContent = `Will retry automatically — attempt ${attempt} of ${maxAttempts}.`;
+
+  box.append(heading, countdownEl, hint);
+  content.appendChild(box);
+
+  for (let s = seconds; s > 0; s--) {
+    setMeta(`Quota limit — retrying in ${s}s…`);
+    countdownEl.textContent = `Retrying in ${s} second${s !== 1 ? 's' : ''}…`;
+    await new Promise(r => setTimeout(r, 1000));
+  }
+}
+
 // ── Core fetch ────────────────────────────────────────────────────────────────
 
 async function runDigest(forceRefresh = false) {
   const btn = document.getElementById('refreshBtn');
   btn.disabled = true;
 
+  // Always check cache first to avoid burning quota on refreshes.
   if (!forceRefresh) {
     const cached = loadCache();
     if (cached) {
@@ -225,27 +256,35 @@ async function runDigest(forceRefresh = false) {
 
   for (let attempt = 0; attempt < CONFIG.MAX_RETRIES; attempt++) {
     try {
-      if (attempt > 0) {
-        setMeta(`Retrying… (attempt ${attempt + 1}/${CONFIG.MAX_RETRIES})`);
-      }
-
       const res = await fetch(CONFIG.API_ENDPOINT, {
         signal: AbortSignal.timeout(CONFIG.TIMEOUT_MS)
       });
 
-      const json = await res.json();
+      const data = await res.json();
 
-      if (!res.ok) {
-        throw new Error(json.error || `HTTP ${res.status}`);
+      // 429 — quota exceeded: show countdown then retry.
+      if (res.status === 429) {
+        const waitSecs = data.retryAfter || 60;
+        if (attempt < CONFIG.MAX_RETRIES - 1) {
+          await showRateLimitCountdown(waitSecs, attempt + 2, CONFIG.MAX_RETRIES);
+          showSkeleton();
+          continue;
+        }
+        throw new Error(`Quota exhausted. Please wait ~${data.retryAfter || 60}s and try again.`);
       }
 
-      saveCache(json);
-      renderDigest(json);
+      if (!res.ok) {
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
+
+      saveCache(data);
+      renderDigest(data);
       return;
 
     } catch (err) {
       lastError = err;
       if (attempt < CONFIG.MAX_RETRIES - 1) {
+        setMeta(`Retrying… (attempt ${attempt + 2}/${CONFIG.MAX_RETRIES})`);
         await new Promise(r => setTimeout(r, delay));
         delay *= 2;
       }

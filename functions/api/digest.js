@@ -1,7 +1,7 @@
 export async function onRequest(context) {
   const { env } = context;
   const API_KEY = env.GEMINI_API_KEY;
-  const MODEL = 'gemini-2.0-flash';
+  const MODEL = 'gemini-1.5-flash';
 
   if (!API_KEY) {
     return json({ error: 'GEMINI_API_KEY is not configured. Set it in Cloudflare Dashboard → Settings → Environment Variables.' }, 500);
@@ -53,9 +53,15 @@ Return the response in the requested JSON format only — no markdown, no commen
       body: JSON.stringify(body),
     });
 
+    if (geminiRes.status === 429) {
+      const retryAfter = parseInt(geminiRes.headers.get('Retry-After') || '60', 10);
+      const errBody = await geminiRes.text();
+      return json({ error: 'Gemini quota exceeded — free-tier rate limit reached.', details: errBody, retryAfter }, 429);
+    }
+
     if (!geminiRes.ok) {
       const errText = await geminiRes.text();
-      return json({ error: `Gemini API error ${geminiRes.status}: ${errText}` }, 502);
+      return json({ error: `Gemini API error ${geminiRes.status}`, details: errText }, 502);
     }
 
     const result = await geminiRes.json();
