@@ -25,29 +25,29 @@
             </div>
         </header>
 
-        <!-- API Key Setup (Hidden by default) -->
+        <!-- API Key Setup -->
         <div id="setup-area" class="mb-8 p-6 bg-white border-2 border-dashed border-slate-200 rounded-2xl hidden">
             <h2 class="text-sm font-bold mb-2">API Configuration</h2>
-            <p class="text-xs text-slate-500 mb-4">Paste your Gemini API Key here. It is saved locally in your browser.</p>
+            <p class="text-xs text-slate-500 mb-4">Paste your Gemini API Key from <a href="https://aistudio.google.com/" target="_blank" class="text-blue-600 underline">Google AI Studio</a>.</p>
             <div class="flex gap-2">
-                <input type="password" id="api-key-input" class="flex-1 px-4 py-2 border border-slate-200 rounded-lg text-sm" placeholder="Paste key (AIza...)">
-                <button id="save-key-btn" class="px-4 py-2 bg-slate-800 text-white rounded-lg text-sm">Save</button>
+                <input type="password" id="api-key-input" class="flex-1 px-4 py-2 border border-slate-200 rounded-lg text-sm" placeholder="AIza...">
+                <button id="save-key-btn" class="px-4 py-2 bg-slate-800 text-white rounded-lg text-sm">Save Key</button>
             </div>
         </div>
 
         <!-- Notification Area -->
         <div id="msg-area" class="mb-6 hidden"></div>
 
-        <!-- News Content -->
+        <!-- Content Area -->
         <div id="content-area" class="space-y-8">
-            <div class="p-12 text-center text-slate-400">
+            <div class="p-12 text-center text-slate-400 border border-slate-100 rounded-3xl">
                 <p>Click "Refresh Feed" to start.</p>
-                <p class="text-xs mt-2">(Make sure your API key is configured in settings ⚙️)</p>
+                <p class="text-xs mt-2">Make sure your API key is saved in ⚙️ settings.</p>
             </div>
         </div>
 
         <footer class="mt-12 pt-6 border-t border-slate-200 text-center text-[10px] text-slate-400 uppercase tracking-widest">
-            Direct-to-Gemini Intelligence · 100% English
+            Direct-to-Gemini Intelligence · High Compatibility Mode
         </footer>
     </div>
 
@@ -59,12 +59,13 @@
             { id: "projects",       label: "Projects",       color: "purple" }
         ];
 
-        // List of model IDs to cycle through if a 404 occurs
+        // Expanded list to handle different project permissions
         const MODELS = [
-            "gemini-1.5-flash-latest",
+            "gemini-2.0-flash",
             "gemini-1.5-flash",
-            "gemini-1.5-pro-latest",
-            "gemini-1.5-pro"
+            "gemini-1.5-flash-latest",
+            "gemini-1.5-pro",
+            "gemini-1.0-pro"
         ];
 
         const UI = {
@@ -86,33 +87,28 @@
             }
         };
 
-        const SCHEMA = {
-            type: "OBJECT",
-            properties: {
-                date: { type: "STRING" },
-                infrastructure: { type: "ARRAY", items: { type: "OBJECT", properties: { title: {type:"STRING"}, summary: {type:"STRING"}, source: {type:"STRING"}, url: {type:"STRING"} } } },
-                legislation: { type: "ARRAY", items: { type: "OBJECT", properties: { title: {type:"STRING"}, summary: {type:"STRING"}, source: {type:"STRING"}, url: {type:"STRING"} } } },
-                approvals: { type: "ARRAY", items: { type: "OBJECT", properties: { title: {type:"STRING"}, summary: {type:"STRING"}, source: {type:"STRING"}, url: {type:"STRING"} } } },
-                projects: { type: "ARRAY", items: { type: "OBJECT", properties: { title: {type:"STRING"}, summary: {type:"STRING"}, source: {type:"STRING"}, url: {type:"STRING"} } } }
-            },
-            required: ["date", "infrastructure", "legislation", "approvals", "projects"]
-        };
-
-        // API Logic
-        async function fetchFromGemini(apiKey, model, useSearch = true) {
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        async function attemptRequest(apiKey, model, version, useSearch) {
+            const url = `https://generativelanguage.googleapis.com/${version}/models/${model}:generateContent?key=${apiKey}`;
             
-            const prompt = `Search for the latest 48h news on offshore wind in Denmark. 
-            Return a strictly English JSON object with categories: infrastructure, legislation, approvals, projects. 
-            Each item needs: title, summary (2 sentences), source, url.`;
+            const prompt = `Provide the latest 48h news on Danish offshore wind energy. 
+            Categories: infrastructure, legislation, approvals, projects. 
+            Return a strictly English JSON object. Each item needs: title, summary (2 sentences), source, url.`;
 
             const payload = {
                 contents: [{ parts: [{ text: prompt }] }],
-                generationConfig: { responseMimeType: "application/json", responseSchema: SCHEMA, temperature: 0.1 }
+                generationConfig: { 
+                    responseMimeType: "application/json", 
+                    temperature: 0.1 
+                }
             };
-            if (useSearch) payload.tools = [{ google_search: {} }];
+            
+            // Search only works on v1beta
+            if (useSearch && version === 'v1beta') {
+                payload.tools = [{ google_search: {} }];
+            }
 
-            return await fetch(url, { method: 'POST', body: JSON.stringify(payload) });
+            const res = await fetch(url, { method: 'POST', body: JSON.stringify(payload) });
+            return res;
         }
 
         async function start() {
@@ -124,59 +120,67 @@
             }
 
             UI.skeleton();
-            UI.status("Initializing AI models...");
+            UI.status("Initializing session...");
 
             let success = false;
-            let lastError = null;
+            let errors = [];
 
-            // Model Cycling Logic to bypass 404 errors
-            for (const model of MODELS) {
-                try {
-                    UI.status(`Connecting to ${model}...`);
-                    
-                    // Attempt with Search
-                    let res = await fetchFromGemini(key, model, true);
-                    let fallback = false;
+            // Try v1beta first (for search), then v1 (for compatibility)
+            const versions = ['v1beta', 'v1'];
 
-                    // Handle Quota/Search Tool restrictions
-                    if (res.status === 429 || res.status === 400) {
-                        UI.status("Search limited. Retrying Knowledge Mode...");
-                        res = await fetchFromGemini(key, model, false);
-                        fallback = true;
+            for (const ver of versions) {
+                if (success) break;
+                
+                for (const model of MODELS) {
+                    try {
+                        UI.status(`Trying ${model} on ${ver}...`);
+                        
+                        // Pass 1: Attempt with Search (if v1beta)
+                        let res = await attemptRequest(key, model, ver, ver === 'v1beta');
+                        let fallback = (ver !== 'v1beta');
+
+                        // If search fails but model exists, try Knowledge Mode
+                        if (res.status === 429 || res.status === 400) {
+                            UI.status(`Search unavailable on ${model}. Switching to Knowledge...`);
+                            res = await attemptRequest(key, model, ver, false);
+                            fallback = true;
+                        }
+
+                        // If the model is not found, skip to next model
+                        if (res.status === 404) {
+                            errors.push(`${model} (${ver}): 404`);
+                            continue;
+                        }
+
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data.error?.message || JSON.stringify(data));
+
+                        const contentText = data.candidates[0].content.parts[0].text;
+                        const content = JSON.parse(contentText);
+                        
+                        render(content, fallback, `${model} (${ver})`);
+                        success = true;
+                        break;
+
+                    } catch (e) {
+                        errors.push(`${model} (${ver}): ${e.message}`);
                     }
-
-                    // If still fails with 404, try next model
-                    if (res.status === 404) {
-                        lastError = `Model ${model} not found.`;
-                        continue; 
-                    }
-
-                    const data = await res.json();
-                    if (!res.ok) throw new Error(JSON.stringify(data.error || data));
-
-                    const content = JSON.parse(data.candidates[0].content.parts[0].text);
-                    render(content, fallback, model);
-                    success = true;
-                    break;
-
-                } catch (e) {
-                    lastError = e.message;
                 }
             }
 
             if (!success) {
-                UI.msg(`Final Error: ${lastError}`);
-                UI.status("Failed.");
+                UI.msg(`All attempts failed. Diagnostic Logs:<br><br>${errors.join('<br>')}`);
+                UI.status("Update failed.");
             }
         }
 
-        function render(data, isFallback, modelUsed) {
-            UI.status(`Updated via ${modelUsed} for ${data.date}`);
+        function render(data, isFallback, source) {
+            UI.status(`Updated via ${source}`);
             const container = document.getElementById('content-area');
             container.innerHTML = "";
 
             if (isFallback) {
-                UI.msg("Note: Live search is currently unavailable. Showing internal AI data.", "warn");
+                UI.msg("Note: Real-time search is disabled for this key/region. Displaying internal AI knowledge.", "warn");
             }
 
             SECTIONS.forEach(sec => {
@@ -184,17 +188,17 @@
                 const sectionHtml = `
                     <section>
                         <div class="flex items-center gap-3 mb-4">
-                            <span class="px-3 py-1 bg-${sec.color}-50 text-${sec.color}-700 border border-${sec.color}-100 text-[10px] font-bold rounded-full uppercase tracking-tighter">${sec.label}</span>
+                            <span class="px-3 py-1 bg-${sec.color}-50 text-${sec.color}-700 border border-${sec.color}-100 text-[10px] font-bold rounded-full uppercase tracking-widest">${sec.label}</span>
                             <div class="h-[1px] flex-1 bg-slate-100"></div>
                         </div>
                         <div class="grid gap-4">
                             ${items.length ? items.map(item => `
                                 <div class="bg-white border border-slate-200 rounded-2xl p-5 border-l-4 border-l-${sec.color}-500 shadow-sm">
                                     <h3 class="text-sm font-bold text-slate-800 mb-2">${item.title}</h3>
-                                    <p class="text-sm text-slate-600 leading-relaxed mb-3 italic">${item.summary}</p>
+                                    <p class="text-sm text-slate-600 leading-relaxed italic border-l-2 border-slate-50 pl-3 mb-3">${item.summary}</p>
                                     <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">${item.source}</div>
                                 </div>
-                            `).join('') : '<p class="text-xs text-slate-400 italic">No updates.</p>'}
+                            `).join('') : '<p class="text-xs text-slate-400 italic py-2 pl-1">No major updates found.</p>'}
                         </div>
                     </section>
                 `;
@@ -202,7 +206,6 @@
             });
         }
 
-        // Event Listeners
         document.getElementById('config-btn').onclick = () => document.getElementById('setup-area').classList.toggle('hidden');
         document.getElementById('refresh-btn').onclick = start;
         document.getElementById('save-key-btn').onclick = () => {
@@ -214,7 +217,6 @@
             }
         };
 
-        // Auto-start if key exists
         if (localStorage.getItem('gemini_api_key')) start();
     </script>
 </body>
