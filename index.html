@@ -3,27 +3,31 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Offshore Wind Digest</title>
+    <title>Offshore Wind Digest — Denmark</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
+        body { background-color: #f8fafc; color: #1e293b; }
         .skeleton { background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; }
         @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
     </style>
 </head>
-<body class="bg-slate-50 text-slate-900 min-h-screen p-4 md:p-8">
+<body class="p-4 md:p-8 min-h-screen">
     <div class="max-w-3xl mx-auto">
         <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 border-b border-slate-200 pb-6">
             <div>
-                <h1 class="text-2xl font-bold tracking-tight text-slate-900">Offshore Wind Digest</h1>
-                <p id="meta-text" class="text-sm text-slate-500 mt-1 italic">Initializing...</p>
+                <h1 class="text-2xl font-bold text-slate-900 tracking-tight">Offshore Wind Digest</h1>
+                <p id="meta-text" class="text-sm text-slate-500 mt-1 italic">Initializing intelligence feed...</p>
             </div>
-            <button id="refresh-btn" class="px-5 py-2 bg-white border border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 active:scale-95 transition-all text-sm font-medium">Refresh</button>
+            <button id="refresh-btn" class="px-5 py-2 bg-white border border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 active:scale-95 transition-all text-sm font-medium flex items-center gap-2">
+                <span>⟳</span> Refresh
+            </button>
         </header>
 
         <div id="error-container" class="mb-6 hidden">
             <div class="p-4 bg-red-50 border border-red-200 rounded-2xl">
                 <p class="text-sm font-bold text-red-800">System Error</p>
                 <p id="error-text" class="text-xs text-red-700 mt-1 font-mono break-all"></p>
+                <p class="text-[10px] text-red-400 mt-2 italic font-sans">If you just added an API key, push a new commit to GitHub to trigger a redeploy.</p>
             </div>
         </div>
 
@@ -50,10 +54,8 @@
                 document.getElementById('notice-area').classList.add('hidden');
             },
             showError: (msg) => {
-                const container = document.getElementById('error-container');
-                const text = document.getElementById('error-text');
-                text.textContent = msg;
-                container.classList.remove('hidden');
+                document.getElementById('error-text').textContent = msg;
+                document.getElementById('error-container').classList.remove('hidden');
             },
             showNotice: (msg) => {
                 const area = document.getElementById('notice-area');
@@ -94,8 +96,8 @@
                     } else {
                         items.forEach(item => {
                             const card = document.createElement('div');
-                            card.className = `bg-white border border-slate-200 rounded-2xl p-5 border-l-4 border-l-${sec.color}-500 shadow-sm`;
-                            card.innerHTML = `<h3 class="text-sm font-bold text-slate-800 mb-2">${item.title}</h3><p class="text-sm text-slate-600 leading-relaxed italic border-l-2 border-slate-50 pl-3 mb-3">${item.summary}</p><div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">${item.source || 'News'}</div>`;
+                            card.className = `bg-white border border-slate-200 rounded-2xl p-5 border-l-4 border-l-${sec.color}-500 shadow-sm hover:shadow-md transition-shadow`;
+                            card.innerHTML = `<h3 class="text-sm font-bold text-slate-800 mb-2">${item.title}</h3><p class="text-sm text-slate-600 leading-relaxed italic border-l-2 border-slate-50 pl-3 mb-3">${item.summary}</p><div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">${item.source || 'Intelligence Feed'}</div>`;
                             grid.appendChild(card);
                         });
                     }
@@ -105,17 +107,17 @@
             }
         };
 
-        async function load() {
+        async function run() {
             const btn = document.getElementById('refresh-btn');
             btn.disabled = true;
             UI.reset();
             UI.createSkeleton();
-            document.getElementById('meta-text').textContent = "Connecting to API...";
+            document.getElementById('meta-text').textContent = "Scanning intelligence channels...";
 
             try {
                 const res = await fetch('/api/digest');
                 const data = await res.json();
-                if (!res.ok) throw new Error(data.details || data.error || "Unknown Server Error");
+                if (!res.ok) throw new Error(data.details || data.error || "Server Connection Failure");
                 UI.render(data);
             } catch (e) {
                 UI.showError(e.message);
@@ -125,8 +127,8 @@
             }
         }
 
-        document.getElementById('refresh-btn').onclick = load;
-        window.onload = load;
+        document.getElementById('refresh-btn').onclick = run;
+        window.onload = run;
     </script>
 </body>
 </html>
