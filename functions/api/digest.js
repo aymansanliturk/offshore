@@ -5,10 +5,10 @@ export async function onRequest(context) {
   const API_KEY = env.GEMINI_API_KEY; // Set this in Cloudflare Dashboard -> Settings -> Variables
   const MODEL = "gemini-2.5-flash-preview-09-2025";
 
-  const prompt = `Search for the latest news (last 48h) regarding offshore wind in Denmark. 
-  Analyze English and Danish sources. 
-  Categorize into: infrastructure, legislation, approvals, projects. 
-  Return a JSON object with a "date" string and arrays for each category. 
+  const prompt = `Search for the latest news (last 48h) regarding offshore wind in Denmark.
+  Analyze English and Danish sources.
+  Categorize into: infrastructure, legislation, approvals, projects.
+  Return a JSON object with a "date" string and arrays for each category.
   Each item in arrays must have: "title", "summary" (2 sentences), "source", and "url".`;
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${API_KEY}`;
@@ -22,27 +22,34 @@ export async function onRequest(context) {
         tools: [{ "google_search": {} }],
         generationConfig: {
           responseMimeType: "application/json",
-          // ... (Include same schema as in HTML)
+          responseSchema: {
+            type: "OBJECT",
+            properties: {
+              date: { type: "STRING" },
+              infrastructure: { type: "ARRAY", items: { type: "OBJECT", properties: { title: { type: "STRING" }, summary: { type: "STRING" }, source: { type: "STRING" }, url: { type: "STRING" } } } },
+              legislation:    { type: "ARRAY", items: { type: "OBJECT", properties: { title: { type: "STRING" }, summary: { type: "STRING" }, source: { type: "STRING" }, url: { type: "STRING" } } } },
+              approvals:      { type: "ARRAY", items: { type: "OBJECT", properties: { title: { type: "STRING" }, summary: { type: "STRING" }, source: { type: "STRING" }, url: { type: "STRING" } } } },
+              projects:       { type: "ARRAY", items: { type: "OBJECT", properties: { title: { type: "STRING" }, summary: { type: "STRING" }, source: { type: "STRING" }, url: { type: "STRING" } } } }
+            }
+          }
         }
       })
     });
 
+    if (!response.ok) {
+      return new Response(JSON.stringify({ error: `Gemini API error: ${response.status}` }), { status: 502, headers: { "Content-Type": "application/json" } });
+    }
+
     const result = await response.json();
-    const data = result.candidates[0].content.parts[0].text;
+    const data = result.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!data) {
+      return new Response(JSON.stringify({ error: "Empty response from Gemini" }), { status: 502, headers: { "Content-Type": "application/json" } });
+    }
 
     return new Response(data, {
       headers: { "Content-Type": "application/json" }
     });
   } catch (e) {
-    return new Response(JSON.stringify({ error: e.message }), { status: 500 });
+    return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { "Content-Type": "application/json" } });
   }
 }
-
-2. **Security Advantage:**
-   * The `GEMINI_API_KEY` is now a secret in your Cloudflare dashboard. It never leaves the server.
-   * Your site is now protected against the "API key exposed" critical finding.
-   * Users can no longer "View Source" to steal your usage credits.
-
-3. **Fixed Cut-off:**
-   * I fixed the `appendChild` line that was truncated in your selection.
-   * I added a safety check in `Storage.load()` to prevent crashes if `localStorage` contains invalid data.
