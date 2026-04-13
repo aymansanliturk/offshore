@@ -3,18 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Offshore Wind Digest — Denmark</title>
+    <title>Offshore Wind Digest</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        .skeleton {
-            background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
-            background-size: 200% 100%;
-            animation: shimmer 1.5s infinite;
-        }
-        @keyframes shimmer {
-            0% { background-position: 200% 0; }
-            100% { background-position: -200% 0; }
-        }
+        .skeleton { background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; }
+        @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900 min-h-screen p-4 md:p-8">
@@ -22,18 +15,23 @@
         <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 border-b border-slate-200 pb-6">
             <div>
                 <h1 class="text-2xl font-bold tracking-tight text-slate-900">Offshore Wind Digest</h1>
-                <p id="meta-text" class="text-sm text-slate-500 mt-1 italic">Initializing news feed...</p>
+                <p id="meta-text" class="text-sm text-slate-500 mt-1 italic">Initializing...</p>
             </div>
-            <button id="refresh-btn" class="px-5 py-2 bg-white border border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 active:scale-95 transition-all text-sm font-medium flex items-center gap-2">
-                <span>⟳</span> Refresh
-            </button>
+            <button id="refresh-btn" class="px-5 py-2 bg-white border border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 active:scale-95 transition-all text-sm font-medium">Refresh</button>
         </header>
+
+        <div id="error-container" class="mb-6 hidden">
+            <div class="p-4 bg-red-50 border border-red-200 rounded-2xl">
+                <p class="text-sm font-bold text-red-800">System Error</p>
+                <p id="error-text" class="text-xs text-red-700 mt-1 font-mono break-all"></p>
+            </div>
+        </div>
 
         <div id="notice-area" class="mb-6 hidden"></div>
         <div id="content-area" class="space-y-8"></div>
 
         <footer class="mt-12 pt-6 border-t border-slate-200 text-center text-[10px] text-slate-400 uppercase tracking-widest">
-            Powered by Gemini 1.5 Flash · Automated Maritime Intelligence
+            Powered by Gemini 1.5 Flash · English Edition
         </footer>
     </div>
 
@@ -46,23 +44,28 @@
         ];
 
         const UI = {
-            clear: () => {
+            reset: () => {
                 document.getElementById('content-area').replaceChildren();
+                document.getElementById('error-container').classList.add('hidden');
                 document.getElementById('notice-area').classList.add('hidden');
             },
-            showNotice: (msg, type = 'info') => {
+            showError: (msg) => {
+                const container = document.getElementById('error-container');
+                const text = document.getElementById('error-text');
+                text.textContent = msg;
+                container.classList.remove('hidden');
+            },
+            showNotice: (msg) => {
                 const area = document.getElementById('notice-area');
                 area.replaceChildren();
                 area.classList.remove('hidden');
                 const div = document.createElement('div');
-                const colors = type === 'warning' ? 'bg-amber-50 border-amber-200 text-amber-800' : 'bg-red-50 border-red-200 text-red-800';
-                div.className = `p-4 rounded-xl text-xs font-medium border ${colors}`;
+                div.className = "p-4 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-800 font-medium";
                 div.textContent = msg;
                 area.appendChild(div);
             },
             createSkeleton: () => {
                 const container = document.getElementById('content-area');
-                UI.clear();
                 for (let i = 0; i < 3; i++) {
                     const skel = document.createElement('div');
                     skel.className = 'p-6 bg-white border border-slate-200 rounded-2xl space-y-4';
@@ -72,52 +75,27 @@
             },
             render: (data) => {
                 const container = document.getElementById('content-area');
-                UI.clear();
+                container.replaceChildren();
                 document.getElementById('meta-text').textContent = `${data.date || 'Today'} · Update Complete`;
 
                 if (data.isFallback) {
-                    UI.showNotice("Real-time search restricted by API quota. Showing latest available AI knowledge.", "warning");
+                    UI.showNotice("Real-time search is currently restricted by API quota. Showing latest available AI knowledge.");
                 }
 
                 SECTIONS.forEach(sec => {
                     const items = data[sec.id] || [];
                     const section = document.createElement('section');
                     section.innerHTML = `<div class="flex items-center gap-3 mb-4"><span class="px-3 py-1 bg-${sec.color}-50 text-${sec.color}-700 border border-${sec.color}-100 text-[10px] font-bold rounded-full uppercase tracking-tighter">${sec.label}</span><div class="h-[1px] flex-1 bg-slate-100"></div></div>`;
-                    
                     const grid = document.createElement('div');
                     grid.className = 'grid gap-4';
 
                     if (items.length === 0) {
-                        const p = document.createElement('p');
-                        p.className = 'text-xs text-slate-400 italic py-2 pl-1';
-                        p.textContent = 'No updates found in this category.';
-                        grid.appendChild(p);
+                        grid.innerHTML = '<p class="text-xs text-slate-400 italic py-2 pl-1">No updates found.</p>';
                     } else {
                         items.forEach(item => {
                             const card = document.createElement('div');
-                            card.className = `bg-white border border-slate-200 rounded-2xl p-5 shadow-sm border-l-4 border-l-${sec.color}-500`;
-                            
-                            const title = document.createElement('h3');
-                            title.className = 'text-sm font-bold text-slate-800 mb-2';
-                            if (item.url && item.url.startsWith('http')) {
-                                const a = document.createElement('a');
-                                a.href = item.url; a.target = '_blank';
-                                a.className = 'hover:text-blue-600 underline decoration-slate-200';
-                                a.textContent = item.title;
-                                title.appendChild(a);
-                            } else {
-                                title.textContent = item.title;
-                            }
-
-                            const p = document.createElement('p');
-                            p.className = 'text-sm text-slate-600 leading-relaxed mb-3 italic border-l-2 border-slate-50 pl-3';
-                            p.textContent = item.summary;
-
-                            const meta = document.createElement('div');
-                            meta.className = 'text-[10px] font-bold text-slate-400 uppercase tracking-widest';
-                            meta.textContent = item.source || 'Intelligence Feed';
-
-                            card.append(title, p, meta);
+                            card.className = `bg-white border border-slate-200 rounded-2xl p-5 border-l-4 border-l-${sec.color}-500 shadow-sm`;
+                            card.innerHTML = `<h3 class="text-sm font-bold text-slate-800 mb-2">${item.title}</h3><p class="text-sm text-slate-600 leading-relaxed italic border-l-2 border-slate-50 pl-3 mb-3">${item.summary}</p><div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">${item.source || 'News'}</div>`;
                             grid.appendChild(card);
                         });
                     }
@@ -127,26 +105,28 @@
             }
         };
 
-        async function run() {
+        async function load() {
             const btn = document.getElementById('refresh-btn');
             btn.disabled = true;
+            UI.reset();
             UI.createSkeleton();
-            document.getElementById('meta-text').textContent = "Scanning maritime intelligence channels...";
+            document.getElementById('meta-text').textContent = "Connecting to API...";
 
             try {
                 const res = await fetch('/api/digest');
                 const data = await res.json();
-                if (!res.ok) throw new Error(data.error || "Connection failure");
+                if (!res.ok) throw new Error(data.details || data.error || "Unknown Server Error");
                 UI.render(data);
             } catch (e) {
-                UI.showNotice("System Error: " + e.message);
+                UI.showError(e.message);
+                document.getElementById('content-area').replaceChildren();
             } finally {
                 btn.disabled = false;
             }
         }
 
-        document.getElementById('refresh-btn').onclick = () => run();
-        window.onload = () => run();
+        document.getElementById('refresh-btn').onclick = load;
+        window.onload = load;
     </script>
 </body>
 </html>
