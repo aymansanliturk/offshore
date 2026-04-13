@@ -3,136 +3,138 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Offshore Wind Radar — Denmark</title>
+    <title>Maritime Intel — Denmark</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
-        body { font-family: 'Inter', sans-serif; background-color: #f0f4f8; }
-        .source-tag { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
-        .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-        .shimmer { background: linear-gradient(90deg, #edf2f7 25%, #e2e8f0 50%, #edf2f7 75%); background-size: 200% 100%; animation: loading 1.5s infinite; }
-        @keyframes loading { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+        :root {
+            --nordic-sand: #F4F1EA;
+            --nordic-sea: #8E9AAF;
+            --nordic-sky: #CBCFD8;
+            --nordic-sage: #A7AD9B;
+            --nordic-slate: #2C3333;
+        }
+        body { 
+            font-family: 'Plus Jakarta Sans', sans-serif; 
+            background-color: var(--nordic-sand);
+            color: var(--nordic-slate);
+        }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .glass-card:hover {
+            transform: translateY(-4px);
+            background: rgba(255, 255, 255, 0.9);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.04);
+        }
+        .shimmer {
+            background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.6) 50%, rgba(255,255,255,0) 100%);
+            background-size: 200% 100%;
+            animation: loading 2s infinite;
+        }
+        @keyframes loading {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: var(--nordic-sand); }
+        ::-webkit-scrollbar-thumb { background: var(--nordic-sky); border-radius: 10px; }
     </style>
 </head>
-<body class="text-slate-900 pb-12">
+<body class="selection:bg-sage-200">
 
-    <!-- Header -->
-    <header class="bg-slate-900 text-white py-8 px-4 mb-8 border-b-4 border-blue-500 shadow-xl">
-        <div class="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
-            <div class="text-center md:text-left">
-                <h1 class="text-3xl font-extrabold tracking-tighter flex items-center justify-center md:justify-start gap-3">
-                    <span class="text-blue-400">⚓</span> DANISH WIND RADAR
-                </h1>
-                <p class="text-slate-400 text-sm mt-1 font-medium">Real-time maritime intelligence & project tracking</p>
+    <div class="max-w-[1400px] mx-auto px-6 py-12">
+        <!-- Minimalist Top Navigation -->
+        <nav class="flex justify-between items-end mb-16">
+            <div>
+                <span class="text-[10px] font-extrabold uppercase tracking-[0.3em] text-slate-400 mb-2 block">Copenhagen / Intelligence</span>
+                <h1 class="text-4xl font-extrabold tracking-tight text-slate-900">Offshore <span class="text-slate-400 font-light">Radar</span></h1>
             </div>
-            <div class="flex items-center gap-4">
-                <div id="last-update" class="text-[10px] text-slate-500 font-bold uppercase tracking-widest bg-slate-800 px-3 py-1 rounded-full">Initializing Feed...</div>
-                <button onclick="refreshAll()" class="p-2 bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors shadow-lg active:scale-95">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+            <div class="flex items-center gap-6">
+                <div id="sync-status" class="hidden md:block text-[10px] font-bold text-slate-400 uppercase tracking-widest">Feed: Live</div>
+                <button onclick="refreshRadar()" class="w-12 h-12 flex items-center justify-center rounded-full glass-card hover:rotate-180 transition-all duration-700">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
                 </button>
             </div>
-        </div>
-    </header>
+        </nav>
 
-    <main class="max-w-6xl mx-auto px-4">
-        
-        <!-- Key Project Monitoring -->
-        <div class="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-12">
-            <div class="lg:col-span-3">
-                <div class="flex items-center gap-3 mb-6">
-                    <h2 class="text-lg font-bold text-slate-800 uppercase tracking-tight">Live Industry Feed</h2>
-                    <div class="h-px flex-1 bg-slate-200"></div>
-                </div>
-                
-                <div id="news-grid" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <!-- News items injected here -->
-                </div>
-            </div>
-
-            <!-- Quick Links / Official Sources -->
-            <div class="space-y-6">
-                <h2 class="text-lg font-bold text-slate-800 uppercase tracking-tight">Official Portals</h2>
-                <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200">
-                    <ul class="space-y-4">
-                        <li>
-                            <a href="https://ens.dk/en/our-responsibilities/wind-power/offshore-wind-power" target="_blank" class="group flex items-start gap-3">
-                                <span class="bg-blue-50 text-blue-600 p-2 rounded-lg group-hover:bg-blue-600 group-hover:text-white transition-all text-sm font-bold">DEA</span>
-                                <div>
-                                    <p class="text-sm font-bold text-slate-800">Danish Energy Agency</p>
-                                    <p class="text-[10px] text-slate-500">Tenders & Legal Approvals</p>
-                                </div>
-                            </a>
-                        </li>
-                        <li>
-                            <a href="https://energinet.dk/en/infrastructure-projects/offshore-wind/" target="_blank" class="group flex items-start gap-3">
-                                <span class="bg-emerald-50 text-emerald-600 p-2 rounded-lg group-hover:bg-emerald-600 group-hover:text-white transition-all text-sm font-bold">TSO</span>
-                                <div>
-                                    <p class="text-sm font-bold text-slate-800">Energinet Grid Projects</p>
-                                    <p class="text-[10px] text-slate-500">Infrastructure & Cable News</p>
-                                </div>
-                            </a>
-                        </li>
-                        <li>
-                            <a href="https://www.offshorewind.biz/tag/denmark/" target="_blank" class="group flex items-start gap-3">
-                                <span class="bg-purple-50 text-purple-600 p-2 rounded-lg group-hover:bg-purple-600 group-hover:text-white transition-all text-sm font-bold">BIZ</span>
-                                <div>
-                                    <p class="text-sm font-bold text-slate-800">OffshoreWind.biz</p>
-                                    <p class="text-[10px] text-slate-500">Market Intelligence Hub</p>
-                                </div>
-                            </a>
-                        </li>
-                    </ul>
-                </div>
-
-                <!-- Strategic Projects Box -->
-                <div class="bg-slate-900 rounded-2xl p-6 text-white shadow-xl relative overflow-hidden">
-                    <div class="relative z-10">
-                        <h3 class="text-xs font-bold text-blue-400 uppercase tracking-widest mb-4">Strategic Radar</h3>
-                        <div class="space-y-3">
-                            <div class="flex justify-between items-center text-xs">
-                                <span class="text-slate-400">North Sea Island</span>
-                                <span class="bg-slate-800 px-2 py-1 rounded text-slate-300">Procurement</span>
-                            </div>
-                            <div class="flex justify-between items-center text-xs">
-                                <span class="text-slate-400">Thor Wind Farm</span>
-                                <span class="bg-slate-800 px-2 py-1 rounded text-slate-300">Construction</span>
-                            </div>
-                            <div class="flex justify-between items-center text-xs">
-                                <span class="text-slate-400">Hesselø</span>
-                                <span class="bg-slate-800 px-2 py-1 rounded text-slate-300">Tendering</span>
-                            </div>
+        <!-- Bento Grid Layout -->
+        <div class="grid grid-cols-1 md:grid-cols-12 gap-6">
+            
+            <!-- Strategic Monitoring (Left Column) -->
+            <div class="md:col-span-4 space-y-6">
+                <div class="glass-card p-8 rounded-[2.5rem] relative overflow-hidden group">
+                    <h2 class="text-xs font-bold uppercase tracking-widest text-slate-400 mb-6">Strategic Nodes</h2>
+                    <div class="space-y-6">
+                        <div class="flex justify-between items-center group/item cursor-help">
+                            <span class="text-sm font-semibold text-slate-700 group-hover/item:text-blue-600">Thor Wind Farm</span>
+                            <span class="text-[10px] px-2 py-1 bg-blue-50 text-blue-600 rounded-md font-bold uppercase">Construction</span>
+                        </div>
+                        <div class="flex justify-between items-center group/item cursor-help">
+                            <span class="text-sm font-semibold text-slate-700 group-hover/item:text-emerald-600">North Sea Island</span>
+                            <span class="text-[10px] px-2 py-1 bg-emerald-50 text-emerald-600 rounded-md font-bold uppercase">Technical Design</span>
+                        </div>
+                        <div class="flex justify-between items-center group/item cursor-help">
+                            <span class="text-sm font-semibold text-slate-700 group-hover/item:text-amber-600">Hesselø Project</span>
+                            <span class="text-[10px] px-2 py-1 bg-amber-50 text-amber-600 rounded-md font-bold uppercase">Consultation</span>
                         </div>
                     </div>
-                    <div class="absolute -right-4 -bottom-4 opacity-10">
-                        <svg class="w-32 h-32 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71L12 2z"></path></svg>
+                </div>
+
+                <div class="bg-slate-900 p-8 rounded-[2.5rem] text-white shadow-2xl relative overflow-hidden group">
+                    <div class="relative z-10">
+                        <p class="text-[10px] font-bold text-blue-400 uppercase tracking-[0.2em] mb-4">Official Portals</p>
+                        <div class="grid grid-cols-2 gap-4">
+                            <a href="https://energinet.dk/en" target="_blank" class="p-4 bg-white/5 rounded-2xl hover:bg-white/10 transition-colors">
+                                <span class="block text-xs font-bold mb-1">Energinet</span>
+                                <span class="text-[9px] text-slate-500">Grid Data</span>
+                            </a>
+                            <a href="https://ens.dk/en" target="_blank" class="p-4 bg-white/5 rounded-2xl hover:bg-white/10 transition-colors">
+                                <span class="block text-xs font-bold mb-1">DEA</span>
+                                <span class="text-[9px] text-slate-500">Legal</span>
+                            </a>
+                        </div>
                     </div>
+                    <!-- Subtle compass icon in background -->
+                    <svg class="absolute -bottom-10 -right-10 w-48 h-48 text-white/5 rotate-12" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71L12 2z"></path></svg>
                 </div>
             </div>
+
+            <!-- News Radar (Main Column) -->
+            <div class="md:col-span-8">
+                <div id="radar-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    <!-- Dynamic Items -->
+                </div>
+            </div>
+
         </div>
 
-    </main>
+        <footer class="mt-24 pt-12 border-t border-slate-200/50 flex flex-col md:flex-row justify-between items-center gap-6">
+            <div class="flex items-center gap-4">
+                <div class="w-8 h-[1px] bg-slate-300"></div>
+                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest italic">Real-time Maritime Intelligence Node</p>
+            </div>
+            <p class="text-[10px] text-slate-400 uppercase tracking-widest">© 2026 Forecast.bid — Copenhagen Sector</p>
+        </footer>
+    </div>
 
     <script>
-        // RSS Feed Aggregator Setup
-        // Uses a public CORS proxy (allorigins.win) to fetch RSS without a backend.
         const FEEDS = [
-            { 
-                name: "Google News", 
-                url: "https://news.google.com/rss/search?q=offshore+wind+denmark+energy+island+when:7d&hl=en-US&gl=US&ceid=US:en",
-                category: "General News"
-            },
-            { 
-                name: "Offshore Wind Biz", 
-                url: "https://www.offshorewind.biz/tag/denmark/feed/",
-                category: "Industry"
-            }
+            { name: "Global Intelligence", url: "https://news.google.com/rss/search?q=offshore+wind+denmark+orsted+vestas+energinet&hl=en-US&gl=US&ceid=US:en" },
+            { name: "Market News", url: "https://www.offshorewind.biz/tag/denmark/feed/" }
         ];
 
-        async function fetchFeed(feed) {
-            const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(feed.url)}`;
+        async function fetchRSS(feed) {
+            const proxy = `https://api.allorigins.win/get?url=${encodeURIComponent(feed.url)}`;
             try {
-                const response = await fetch(proxyUrl);
-                const data = await response.json();
+                const res = await fetch(proxy);
+                const data = await res.json();
                 const parser = new DOMParser();
                 const xml = parser.parseFromString(data.contents, "text/xml");
                 const items = xml.querySelectorAll("item");
@@ -140,251 +142,57 @@
                 return Array.from(items).map(item => ({
                     title: item.querySelector("title")?.textContent,
                     link: item.querySelector("link")?.textContent,
-                    date: new Date(item.querySelector("pubDate")?.textContent),
-                    source: feed.name,
-                    category: feed.category
+                    pubDate: new Date(item.querySelector("pubDate")?.textContent),
+                    source: feed.name
                 }));
-            } catch (error) {
-                console.error("Error fetching feed:", feed.name, error);
-                return [];
-            }
+            } catch (e) { return []; }
         }
 
-        async function refreshAll() {
-            const grid = document.getElementById('news-grid');
-            const meta = document.getElementById('last-update');
+        async function refreshRadar() {
+            const container = document.getElementById('radar-grid');
+            const status = document.getElementById('sync-status');
             
-            // Show Skeleton
-            grid.innerHTML = Array(6).fill(0).map(() => `
-                <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
-                    <div class="shimmer h-4 w-1/4 rounded mb-4"></div>
-                    <div class="shimmer h-5 w-full rounded mb-2"></div>
-                    <div class="shimmer h-5 w-2/3 rounded"></div>
+            // Loading State
+            container.innerHTML = Array(4).fill(0).map(() => `
+                <div class="glass-card p-8 rounded-[2.5rem] space-y-4">
+                    <div class="shimmer h-3 w-20 rounded-full"></div>
+                    <div class="shimmer h-5 w-full rounded-lg"></div>
+                    <div class="shimmer h-5 w-2/3 rounded-lg"></div>
                 </div>
             `).join('');
 
-            // Fetch and Combine
-            const results = await Promise.all(FEEDS.map(fetchFeed));
-            let combined = results.flat().sort((a, b) => b.date - a.date);
-            
-            // Limit to top 12
-            combined = combined.slice(0, 12);
+            const results = await Promise.all(FEEDS.map(fetchRSS));
+            const combined = results.flat().sort((a, b) => b.pubDate - a.pubDate).slice(0, 10);
 
-            // Render
-            grid.innerHTML = combined.map(item => {
-                const dateStr = item.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                const color = item.source === "Google News" ? "blue" : "purple";
+            container.innerHTML = combined.map((item, idx) => {
+                const relativeTime = new Intl.RelativeTimeFormat('en', { style: 'short' }).format(
+                    Math.ceil((item.pubDate - new Date()) / (1000 * 60 * 60 * 24)), 'day'
+                );
                 
                 return `
-                    <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200 hover:border-blue-400 hover:shadow-lg transition-all flex flex-col justify-between group">
+                    <div class="glass-card p-8 rounded-[2.5rem] flex flex-col justify-between group">
                         <div>
-                            <div class="flex justify-between items-center mb-3">
-                                <span class="source-tag text-${color}-600 bg-${color}-50 px-2 py-1 rounded">${item.source}</span>
-                                <span class="text-[10px] text-slate-400 font-bold">${dateStr}</span>
+                            <div class="flex justify-between items-start mb-6">
+                                <span class="text-[10px] font-bold uppercase tracking-widest text-slate-400">${item.source}</span>
+                                <span class="text-[9px] font-bold bg-slate-100 px-2 py-1 rounded text-slate-500">${relativeTime === '0 day' ? 'Today' : relativeTime}</span>
                             </div>
-                            <h3 class="font-bold text-slate-800 text-sm mb-3 group-hover:text-blue-600 transition-colors">
-                                <a href="${item.link}" target="_blank" class="line-clamp-2">${item.title}</a>
+                            <h3 class="text-base font-bold text-slate-800 leading-snug group-hover:text-blue-600 transition-colors">
+                                <a href="${item.link}" target="_blank">${item.title}</a>
                             </h3>
                         </div>
-                        <div class="flex items-center gap-1 text-blue-600 font-bold text-[10px] uppercase tracking-widest mt-4">
-                            Read Full Report 
-                            <svg class="w-3 h-3 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M9 5l7 7-7 7"></path></svg>
+                        <div class="mt-8 flex items-center justify-between">
+                            <div class="w-10 h-10 rounded-full bg-nordic-sand flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                <svg class="w-4 h-4 text-slate-900" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+                            </div>
                         </div>
                     </div>
                 `;
             }).join('');
 
-            meta.textContent = `LAST SYNC: ${new Date().toLocaleTimeString()}`;
+            status.textContent = `Feed Active / ${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
         }
 
-        // Initialize on load
-        window.onload = refreshAll;
-    </script>
-</body>
-</html>
-        <!-- Notification Area -->
-        <div id="msg-area" class="mb-6 hidden"></div>
-
-        <!-- Content Area -->
-        <div id="content-area" class="space-y-8">
-            <div class="p-12 text-center text-slate-400 border border-slate-100 rounded-3xl">
-                <p>Click "Refresh Feed" to start.</p>
-                <p class="text-xs mt-2">Make sure your API key is saved in ⚙️ settings.</p>
-            </div>
-        </div>
-
-        <footer class="mt-12 pt-6 border-t border-slate-200 text-center text-[10px] text-slate-400 uppercase tracking-widest">
-            Direct-to-Gemini Intelligence · High Compatibility Mode
-        </footer>
-    </div>
-
-    <script>
-        const SECTIONS = [
-            { id: "infrastructure", label: "Infrastructure", color: "blue" },
-            { id: "legislation",    label: "Legislation",    color: "green" },
-            { id: "approvals",      label: "Approvals",      color: "amber" },
-            { id: "projects",       label: "Projects",       color: "purple" }
-        ];
-
-        // Expanded list to handle different project permissions
-        const MODELS = [
-            "gemini-2.0-flash",
-            "gemini-1.5-flash",
-            "gemini-1.5-flash-latest",
-            "gemini-1.5-pro",
-            "gemini-1.0-pro"
-        ];
-
-        const UI = {
-            status: (txt) => document.getElementById('status-text').textContent = txt,
-            msg: (txt, type='error') => {
-                const area = document.getElementById('msg-area');
-                area.classList.remove('hidden');
-                area.innerHTML = `<div class="p-4 rounded-xl text-xs font-mono border ${type === 'error' ? 'bg-red-50 border-red-200 text-red-800' : 'bg-amber-50 border-amber-200 text-amber-800'}">${txt}</div>`;
-            },
-            skeleton: () => {
-                document.getElementById('msg-area').classList.add('hidden');
-                const area = document.getElementById('content-area');
-                area.innerHTML = [1,2,3].map(() => `
-                    <div class="p-6 bg-white border border-slate-200 rounded-2xl space-y-4">
-                        <div class="skeleton h-4 w-1/4 rounded"></div>
-                        <div class="skeleton h-3 w-full rounded"></div>
-                    </div>
-                `).join('');
-            }
-        };
-
-        async function attemptRequest(apiKey, model, version, useSearch) {
-            const url = `https://generativelanguage.googleapis.com/${version}/models/${model}:generateContent?key=${apiKey}`;
-            
-            const prompt = `Provide the latest 48h news on Danish offshore wind energy. 
-            Categories: infrastructure, legislation, approvals, projects. 
-            Return a strictly English JSON object. Each item needs: title, summary (2 sentences), source, url.`;
-
-            const payload = {
-                contents: [{ parts: [{ text: prompt }] }],
-                generationConfig: { 
-                    responseMimeType: "application/json", 
-                    temperature: 0.1 
-                }
-            };
-            
-            // Search only works on v1beta
-            if (useSearch && version === 'v1beta') {
-                payload.tools = [{ google_search: {} }];
-            }
-
-            const res = await fetch(url, { method: 'POST', body: JSON.stringify(payload) });
-            return res;
-        }
-
-        async function start() {
-            const key = localStorage.getItem('gemini_api_key');
-            if (!key) {
-                document.getElementById('setup-area').classList.remove('hidden');
-                UI.status("Configuration required");
-                return;
-            }
-
-            UI.skeleton();
-            UI.status("Initializing session...");
-
-            let success = false;
-            let errors = [];
-
-            // Try v1beta first (for search), then v1 (for compatibility)
-            const versions = ['v1beta', 'v1'];
-
-            for (const ver of versions) {
-                if (success) break;
-                
-                for (const model of MODELS) {
-                    try {
-                        UI.status(`Trying ${model} on ${ver}...`);
-                        
-                        // Pass 1: Attempt with Search (if v1beta)
-                        let res = await attemptRequest(key, model, ver, ver === 'v1beta');
-                        let fallback = (ver !== 'v1beta');
-
-                        // If search fails but model exists, try Knowledge Mode
-                        if (res.status === 429 || res.status === 400) {
-                            UI.status(`Search unavailable on ${model}. Switching to Knowledge...`);
-                            res = await attemptRequest(key, model, ver, false);
-                            fallback = true;
-                        }
-
-                        // If the model is not found, skip to next model
-                        if (res.status === 404) {
-                            errors.push(`${model} (${ver}): 404`);
-                            continue;
-                        }
-
-                        const data = await res.json();
-                        if (!res.ok) throw new Error(data.error?.message || JSON.stringify(data));
-
-                        const contentText = data.candidates[0].content.parts[0].text;
-                        const content = JSON.parse(contentText);
-                        
-                        render(content, fallback, `${model} (${ver})`);
-                        success = true;
-                        break;
-
-                    } catch (e) {
-                        errors.push(`${model} (${ver}): ${e.message}`);
-                    }
-                }
-            }
-
-            if (!success) {
-                UI.msg(`All attempts failed. Diagnostic Logs:<br><br>${errors.join('<br>')}`);
-                UI.status("Update failed.");
-            }
-        }
-
-        function render(data, isFallback, source) {
-            UI.status(`Updated via ${source}`);
-            const container = document.getElementById('content-area');
-            container.innerHTML = "";
-
-            if (isFallback) {
-                UI.msg("Note: Real-time search is disabled for this key/region. Displaying internal AI knowledge.", "warn");
-            }
-
-            SECTIONS.forEach(sec => {
-                const items = data[sec.id] || [];
-                const sectionHtml = `
-                    <section>
-                        <div class="flex items-center gap-3 mb-4">
-                            <span class="px-3 py-1 bg-${sec.color}-50 text-${sec.color}-700 border border-${sec.color}-100 text-[10px] font-bold rounded-full uppercase tracking-widest">${sec.label}</span>
-                            <div class="h-[1px] flex-1 bg-slate-100"></div>
-                        </div>
-                        <div class="grid gap-4">
-                            ${items.length ? items.map(item => `
-                                <div class="bg-white border border-slate-200 rounded-2xl p-5 border-l-4 border-l-${sec.color}-500 shadow-sm">
-                                    <h3 class="text-sm font-bold text-slate-800 mb-2">${item.title}</h3>
-                                    <p class="text-sm text-slate-600 leading-relaxed italic border-l-2 border-slate-50 pl-3 mb-3">${item.summary}</p>
-                                    <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">${item.source}</div>
-                                </div>
-                            `).join('') : '<p class="text-xs text-slate-400 italic py-2 pl-1">No major updates found.</p>'}
-                        </div>
-                    </section>
-                `;
-                container.innerHTML += sectionHtml;
-            });
-        }
-
-        document.getElementById('config-btn').onclick = () => document.getElementById('setup-area').classList.toggle('hidden');
-        document.getElementById('refresh-btn').onclick = start;
-        document.getElementById('save-key-btn').onclick = () => {
-            const val = document.getElementById('api-key-input').value.trim();
-            if (val) {
-                localStorage.setItem('gemini_api_key', val);
-                document.getElementById('setup-area').classList.add('hidden');
-                start();
-            }
-        };
-
-        if (localStorage.getItem('gemini_api_key')) start();
+        window.onload = refreshRadar;
     </script>
 </body>
 </html>
