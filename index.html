@@ -21,27 +21,35 @@
     background-size: 200% 100%;
     animation: shimmer 1.5s infinite;
   }
+  /* Fallback for Tailwind CDN versions that don't include line-clamp */
+  .line-clamp-3 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+  }
 </style>
 </head>
 <body class="p-4 md:p-8 min-h-screen">
-<div class="max-w-3xl mx-auto">
+<div class="max-w-[1400px] mx-auto">
 
-  <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+  <header class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-3">
     <div>
       <h1 class="text-2xl font-bold text-slate-900 tracking-tight">Offshore Wind Digest</h1>
       <p id="meta" class="text-sm text-slate-500 mt-1 italic">Loading latest news...</p>
     </div>
     <button id="refreshBtn"
-      class="px-5 py-2 bg-white border border-slate-200 rounded-xl shadow-sm hover:bg-slate-50
-             active:bg-slate-100 transition-colors flex items-center gap-2 text-sm font-medium
-             text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed">
+      class="shrink-0 px-4 py-2 bg-white border border-slate-200 rounded-xl shadow-sm
+             hover:bg-slate-50 active:bg-slate-100 transition-colors flex items-center gap-2
+             text-sm font-medium text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed">
       <span aria-hidden="true">⟳</span> Refresh
     </button>
   </header>
 
-  <div id="content" class="space-y-8"></div>
+  <!-- 4×4 grid: 4 category columns, 4 cards each, with ←/→ pagination per column -->
+  <div id="grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5"></div>
 
-  <footer class="mt-12 pt-6 border-t border-slate-200 text-center text-xs text-slate-400">
+  <footer class="mt-10 pt-6 border-t border-slate-200 text-center text-xs text-slate-400">
     Live RSS · Offshore Wind Biz · Google News · Recharge News
   </footer>
 
@@ -52,11 +60,11 @@
 // ── Configuration ─────────────────────────────────────────────────────────────
 
 const CONFIG = {
-  API_ENDPOINT: '/api/digest',
-  // Cache key is hour-scoped — data auto-refreshes every hour.
-  CACHE_KEY: 'offshore_rss_' + new Date().toISOString().slice(0, 13),
-  TIMEOUT_MS: 30000,
-  MAX_RETRIES: 2,
+  API_ENDPOINT:   '/api/digest',
+  CACHE_KEY:      'offshore_rss_' + new Date().toISOString().slice(0, 13), // hourly
+  TIMEOUT_MS:     30000,
+  MAX_RETRIES:    2,
+  ITEMS_PER_PAGE: 4,
 };
 
 const SECTIONS = [
@@ -70,19 +78,22 @@ const SECTIONS = [
     badge: 'bg-purple-50 text-purple-700 border-purple-200', accent: 'border-l-purple-500' },
 ];
 
+// ── Per-column page state ─────────────────────────────────────────────────────
+
+const pages = {}; // sectionId → current page index (0-based)
+
 // ── Cache ─────────────────────────────────────────────────────────────────────
 
 function saveCache(data) {
   try { localStorage.setItem(CONFIG.CACHE_KEY, JSON.stringify(data)); } catch {}
 }
-
 function loadCache() {
   try { return JSON.parse(localStorage.getItem(CONFIG.CACHE_KEY)) || null; } catch { return null; }
 }
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
-/** Return a validated http/https URL or null. Prevents javascript: injection. */
+/** Validates a URL is http/https. Prevents javascript: injection. */
 function safeUrl(url) {
   try {
     const u = new URL(url);
@@ -105,32 +116,195 @@ function setMeta(text) {
   document.getElementById('meta').textContent = text;
 }
 
+// ── Card builder ──────────────────────────────────────────────────────────────
+
+/**
+ * Build a single article card. The whole card is an <a> when a URL is available
+ * so the full surface area is tappable on mobile.
+ * All article data is set via textContent — never innerHTML.
+ */
+function buildCard(item, section) {
+  const validUrl = item.url ? safeUrl(item.url) : null;
+
+  const card = document.createElement(validUrl ? 'a' : 'div');
+  if (validUrl) {
+    card.href   = validUrl;
+    card.target = '_blank';
+    card.rel    = 'noopener noreferrer';
+  }
+  card.className =
+    `flex flex-col justify-between bg-white border border-slate-200 border-l-4 ${section.accent} ` +
+    `rounded-xl p-4 min-h-[108px] shadow-sm transition-all duration-200 ` +
+    (validUrl ? 'hover:shadow-md hover:border-slate-300 cursor-pointer group' : '');
+
+  // Title — up to 3 lines, then ellipsis
+  const title = document.createElement('p');
+  title.className =
+    'text-sm font-semibold text-slate-800 leading-snug line-clamp-3 ' +
+    (validUrl ? 'group-hover:text-blue-600 transition-colors' : '');
+  title.textContent = item.title || '(untitled)';
+
+  // Footer: source name left, age right
+  const footer = document.createElement('div');
+  footer.className = 'flex items-center justify-between mt-3 pt-2 border-t border-slate-50';
+
+  const src = document.createElement('span');
+  src.className = 'text-[10px] font-medium text-slate-400 uppercase tracking-wider truncate mr-2';
+  src.textContent = item.source || '';
+
+  const age = document.createElement('span');
+  age.className = 'text-[10px] text-slate-300 shrink-0';
+  age.textContent = relativeTime(item.pubDate);
+
+  footer.append(src, age);
+  card.append(title, footer);
+  return card;
+}
+
+// ── Column rendering ──────────────────────────────────────────────────────────
+
+function renderColumnCards(section, items) {
+  const page       = pages[section.id];
+  const totalPages = Math.max(1, Math.ceil(items.length / CONFIG.ITEMS_PER_PAGE));
+  const start      = page * CONFIG.ITEMS_PER_PAGE;
+  const slice      = items.slice(start, start + CONFIG.ITEMS_PER_PAGE);
+
+  const cardsEl = document.getElementById(`cards-${section.id}`);
+  cardsEl.replaceChildren();
+
+  if (slice.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'text-sm text-slate-400 italic p-1';
+    empty.textContent = 'No updates in this category.';
+    cardsEl.appendChild(empty);
+  } else {
+    slice.forEach(item => cardsEl.appendChild(buildCard(item, section)));
+  }
+
+  // Pagination controls
+  document.getElementById(`prev-${section.id}`).disabled = page === 0;
+  document.getElementById(`next-${section.id}`).disabled = page >= totalPages - 1;
+  document.getElementById(`page-${section.id}`).textContent =
+    totalPages > 1 ? `${page + 1} / ${totalPages}` : '';
+  document.getElementById(`nav-${section.id}`).style.visibility =
+    totalPages > 1 ? 'visible' : 'hidden';
+}
+
+function buildColumn(section, items) {
+  pages[section.id] = 0;
+
+  const col = document.createElement('div');
+  col.className = 'flex flex-col';
+
+  // ── Column header ──────────────────────────────────────────────────────────
+  const header = document.createElement('div');
+  header.className = 'flex items-center justify-between mb-3';
+
+  const badge = document.createElement('span');
+  badge.className =
+    `px-3 py-1 text-[10px] font-bold rounded-full uppercase tracking-widest border ${section.badge}`;
+  badge.textContent = section.label;
+
+  const countEl = document.createElement('span');
+  countEl.className = 'text-xs text-slate-400';
+  countEl.textContent = `${items.length} item${items.length !== 1 ? 's' : ''}`;
+
+  header.append(badge, countEl);
+
+  // ── Cards area ─────────────────────────────────────────────────────────────
+  const cards = document.createElement('div');
+  cards.id = `cards-${section.id}`;
+  cards.className = 'flex flex-col gap-3 flex-1';
+
+  // ── Pagination row ─────────────────────────────────────────────────────────
+  const nav = document.createElement('div');
+  nav.id = `nav-${section.id}`;
+  nav.className = 'flex items-center justify-between mt-4 pt-3 border-t border-slate-100';
+
+  const btnClass =
+    'w-8 h-8 flex items-center justify-center rounded-lg font-medium text-base ' +
+    'text-slate-400 hover:text-slate-700 hover:bg-slate-100 ' +
+    'disabled:opacity-25 disabled:cursor-not-allowed ' +
+    'disabled:hover:bg-transparent disabled:hover:text-slate-400 transition-colors';
+
+  const prevBtn = document.createElement('button');
+  prevBtn.id = `prev-${section.id}`;
+  prevBtn.className = btnClass;
+  prevBtn.setAttribute('aria-label', `Previous ${section.label} page`);
+  prevBtn.textContent = '←';
+  prevBtn.addEventListener('click', () => {
+    if (pages[section.id] > 0) {
+      pages[section.id]--;
+      renderColumnCards(section, items);
+    }
+  });
+
+  const pageEl = document.createElement('span');
+  pageEl.id = `page-${section.id}`;
+  pageEl.className = 'text-xs text-slate-400 tabular-nums';
+
+  const nextBtn = document.createElement('button');
+  nextBtn.id = `next-${section.id}`;
+  nextBtn.className = btnClass;
+  nextBtn.setAttribute('aria-label', `Next ${section.label} page`);
+  nextBtn.textContent = '→';
+  nextBtn.addEventListener('click', () => {
+    const totalPages = Math.ceil(items.length / CONFIG.ITEMS_PER_PAGE);
+    if (pages[section.id] < totalPages - 1) {
+      pages[section.id]++;
+      renderColumnCards(section, items);
+    }
+  });
+
+  nav.append(prevBtn, pageEl, nextBtn);
+  col.append(header, cards, nav);
+  return col;
+}
+
 // ── UI States ─────────────────────────────────────────────────────────────────
 
 function showSkeleton() {
   setMeta('Fetching latest offshore wind news…');
-  const content = document.getElementById('content');
-  content.replaceChildren();
-  for (let i = 0; i < 4; i++) {
-    const card = document.createElement('div');
-    card.className = 'p-6 bg-white border border-slate-200 rounded-2xl space-y-3';
-    // Static hardcoded HTML — safe to use innerHTML here (no user/API data).
-    card.innerHTML =
-      '<div class="skeleton h-3 w-1/4 rounded"></div>' +
-      '<div class="skeleton h-4 w-3/4 rounded mt-1"></div>' +
-      '<div class="skeleton h-3 w-full rounded"></div>' +
-      '<div class="skeleton h-3 w-2/3 rounded"></div>';
-    content.appendChild(card);
-  }
+  const grid = document.getElementById('grid');
+  grid.replaceChildren();
+
+  SECTIONS.forEach(() => {
+    const col = document.createElement('div');
+    col.className = 'flex flex-col gap-3';
+
+    // Skeleton header
+    const header = document.createElement('div');
+    header.className = 'flex items-center justify-between mb-1';
+    const skBadge = document.createElement('div');
+    skBadge.className = 'skeleton h-6 w-28 rounded-full';
+    const skCount = document.createElement('div');
+    skCount.className = 'skeleton h-4 w-12 rounded';
+    header.append(skBadge, skCount);
+    col.appendChild(header);
+
+    // Skeleton cards — static HTML, no user data
+    for (let i = 0; i < CONFIG.ITEMS_PER_PAGE; i++) {
+      const card = document.createElement('div');
+      card.className = 'bg-white border border-slate-200 rounded-xl p-4 space-y-2 min-h-[108px]';
+      card.innerHTML =
+        '<div class="skeleton h-3 w-full rounded"></div>' +
+        '<div class="skeleton h-3 w-4/5 rounded"></div>' +
+        '<div class="skeleton h-3 w-3/5 rounded"></div>' +
+        '<div class="skeleton h-2 w-2/5 rounded mt-3"></div>';
+      col.appendChild(card);
+    }
+
+    grid.appendChild(col);
+  });
 }
 
 function showError(message) {
   setMeta('Failed to load digest');
-  const content = document.getElementById('content');
-  content.replaceChildren();
+  const grid = document.getElementById('grid');
+  grid.replaceChildren();
 
   const box = document.createElement('div');
-  box.className = 'p-5 bg-red-50 border border-red-200 rounded-2xl space-y-2';
+  box.className = 'col-span-full p-5 bg-red-50 border border-red-200 rounded-2xl space-y-2';
 
   const heading = document.createElement('p');
   heading.className = 'text-sm font-semibold text-red-700';
@@ -141,16 +315,12 @@ function showError(message) {
   detail.textContent = message;
 
   box.append(heading, detail);
-  content.appendChild(box);
+  grid.appendChild(box);
   document.getElementById('refreshBtn').disabled = false;
 }
 
-// ── Render ────────────────────────────────────────────────────────────────────
+// ── Main render ───────────────────────────────────────────────────────────────
 
-/**
- * Render the digest data into the content area.
- * All RSS-provided text is set via textContent — never innerHTML.
- */
 function renderDigest(data) {
   const total = SECTIONS.reduce((sum, s) => sum + (data[s.id]?.length || 0), 0);
   const srcNote = data.sourcesLive > 0
@@ -158,109 +328,26 @@ function renderDigest(data) {
     : '';
   setMeta(`${data.date || 'Today'} · ${total} item${total !== 1 ? 's' : ''}${srcNote}`);
 
-  const content = document.getElementById('content');
-  content.replaceChildren();
+  const grid = document.getElementById('grid');
+  grid.replaceChildren();
 
-  // No articles at all — sources may be down.
   if (total === 0) {
     const notice = document.createElement('div');
-    notice.className = 'p-5 bg-slate-50 border border-slate-200 rounded-2xl';
+    notice.className = 'col-span-full p-5 bg-slate-50 border border-slate-200 rounded-2xl';
     const msg = document.createElement('p');
     msg.className = 'text-sm text-slate-500';
     msg.textContent =
       'No articles found right now. RSS sources may be temporarily unavailable — try refreshing in a few minutes.';
     notice.appendChild(msg);
-    content.appendChild(notice);
+    grid.appendChild(notice);
     document.getElementById('refreshBtn').disabled = false;
     return;
   }
 
   SECTIONS.forEach(section => {
     const items = Array.isArray(data[section.id]) ? data[section.id] : [];
-
-    const wrapper = document.createElement('section');
-
-    // Section header badge + horizontal rule.
-    const headerRow = document.createElement('div');
-    headerRow.className = 'flex items-center gap-3 mb-4';
-
-    const badge = document.createElement('span');
-    badge.className =
-      `px-3 py-1 text-[11px] font-bold rounded-full uppercase tracking-widest border ${section.badge}`;
-    badge.textContent = section.label;
-
-    const divider = document.createElement('div');
-    divider.className = 'h-px flex-1 bg-slate-100';
-
-    headerRow.append(badge, divider);
-    wrapper.appendChild(headerRow);
-
-    const grid = document.createElement('div');
-    grid.className = 'grid gap-4';
-
-    if (items.length === 0) {
-      const empty = document.createElement('p');
-      empty.className = 'text-sm text-slate-400 italic py-2 pl-1';
-      empty.textContent = 'No updates found in this category.';
-      grid.appendChild(empty);
-    } else {
-      items.forEach(item => {
-        const card = document.createElement('div');
-        card.className =
-          `bg-white border border-slate-200 border-l-4 ${section.accent} ` +
-          `rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow duration-200`;
-
-        // Title — linked if a valid URL is available.
-        const titleEl = document.createElement('div');
-        titleEl.className = 'text-sm font-semibold text-slate-800 mb-2';
-
-        const validUrl = item.url ? safeUrl(item.url) : null;
-        if (validUrl) {
-          const link = document.createElement('a');
-          link.href = validUrl;
-          link.target = '_blank';
-          link.rel = 'noopener noreferrer';
-          link.className =
-            'hover:text-blue-600 underline underline-offset-4 ' +
-            'decoration-slate-200 hover:decoration-blue-300 transition-colors';
-          link.textContent = item.title || '(untitled)';
-          titleEl.appendChild(link);
-        } else {
-          titleEl.textContent = item.title || '(untitled)';
-        }
-
-        card.appendChild(titleEl);
-
-        // Description snippet — only shown when available.
-        if (item.description) {
-          const desc = document.createElement('p');
-          desc.className =
-            'text-sm text-slate-500 leading-relaxed border-l-2 border-slate-100 pl-3 mb-3';
-          desc.textContent = item.description;
-          card.appendChild(desc);
-        }
-
-        // Footer: source name + relative age.
-        const footer = document.createElement('div');
-        footer.className = 'flex items-center justify-between mt-2';
-
-        const source = document.createElement('span');
-        source.className = 'text-[11px] font-medium text-slate-400 uppercase tracking-wider';
-        source.textContent = item.source || 'Unknown Source';
-
-        const age = document.createElement('span');
-        age.className = 'text-[11px] text-slate-300';
-        age.textContent = relativeTime(item.pubDate);
-
-        footer.append(source, age);
-        card.appendChild(footer);
-
-        grid.appendChild(card);
-      });
-    }
-
-    wrapper.appendChild(grid);
-    content.appendChild(wrapper);
+    grid.appendChild(buildColumn(section, items));
+    renderColumnCards(section, items);
   });
 
   document.getElementById('refreshBtn').disabled = false;
@@ -282,15 +369,12 @@ async function runDigest(forceRefresh = false) {
   let delay = 2000;
   for (let attempt = 0; attempt < CONFIG.MAX_RETRIES; attempt++) {
     try {
-      const res = await fetch(CONFIG.API_ENDPOINT, {
+      const res  = await fetch(CONFIG.API_ENDPOINT, {
         signal: AbortSignal.timeout(CONFIG.TIMEOUT_MS),
       });
-
       const data = await res.json();
 
-      if (!res.ok) {
-        throw new Error(data.error || `HTTP ${res.status}`);
-      }
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
 
       saveCache(data);
       renderDigest(data);
@@ -302,7 +386,7 @@ async function runDigest(forceRefresh = false) {
         await new Promise(r => setTimeout(r, delay));
         delay *= 2;
       } else {
-        showError(err?.message || 'Unknown error — check the browser console for details.');
+        showError(err?.message || 'Unknown error — check the browser console.');
       }
     }
   }
