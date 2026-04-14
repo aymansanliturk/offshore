@@ -176,9 +176,17 @@ export async function onRequest() {
   const results = await Promise.all(SOURCES.map(fetchSource));
   const sourcesLive = results.filter(r => r.length > 0).length;
 
-  // Merge, sort newest-first, deduplicate
+  // Merge, sort newest-first, deduplicate, drop anything older than 3 months
+  const cutoff = Date.now() - 90 * 24 * 60 * 60 * 1000;
   const items = dedup(
-    results.flat().sort((a, b) => new Date(b.pubDate || 0) - new Date(a.pubDate || 0)),
+    results
+      .flat()
+      .filter(item => {
+        if (!item.pubDate) return true; // no date — keep rather than silently drop
+        const t = new Date(item.pubDate).getTime();
+        return isNaN(t) || t >= cutoff;
+      })
+      .sort((a, b) => new Date(b.pubDate || 0) - new Date(a.pubDate || 0)),
   );
 
   const digest = {
