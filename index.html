@@ -1,198 +1,363 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Maritime Intel — Denmark</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --nordic-sand: #F4F1EA;
-            --nordic-sea: #8E9AAF;
-            --nordic-sky: #CBCFD8;
-            --nordic-sage: #A7AD9B;
-            --nordic-slate: #2C3333;
-        }
-        body { 
-            font-family: 'Plus Jakarta Sans', sans-serif; 
-            background-color: var(--nordic-sand);
-            color: var(--nordic-slate);
-        }
-        .glass-card {
-            background: rgba(255, 255, 255, 0.7);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.5);
-            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-        .glass-card:hover {
-            transform: translateY(-4px);
-            background: rgba(255, 255, 255, 0.9);
-            box-shadow: 0 20px 40px rgba(0,0,0,0.04);
-        }
-        .shimmer {
-            background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.6) 50%, rgba(255,255,255,0) 100%);
-            background-size: 200% 100%;
-            animation: loading 2s infinite;
-        }
-        @keyframes loading {
-            0% { background-position: 200% 0; }
-            100% { background-position: -200% 0; }
-        }
-        /* Custom scrollbar */
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-track { background: var(--nordic-sand); }
-        ::-webkit-scrollbar-thumb { background: var(--nordic-sky); border-radius: 10px; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy"
+  content="default-src 'self';
+           script-src 'unsafe-inline' https://cdn.tailwindcss.com;
+           connect-src 'self';
+           style-src 'unsafe-inline';">
+<title>Offshore Wind Digest — Denmark</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { background-color: #f8fafc; color: #1e293b; }
+  @keyframes shimmer {
+    0%   { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+  .skeleton {
+    background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+</style>
 </head>
-<body class="selection:bg-sage-200">
+<body class="p-4 md:p-8 min-h-screen">
+<div class="max-w-3xl mx-auto">
 
-    <div class="max-w-[1400px] mx-auto px-6 py-12">
-        <!-- Minimalist Top Navigation -->
-        <nav class="flex justify-between items-end mb-16">
-            <div>
-                <span class="text-[10px] font-extrabold uppercase tracking-[0.3em] text-slate-400 mb-2 block">Copenhagen / Intelligence</span>
-                <h1 class="text-4xl font-extrabold tracking-tight text-slate-900">Offshore <span class="text-slate-400 font-light">Radar</span></h1>
-            </div>
-            <div class="flex items-center gap-6">
-                <div id="sync-status" class="hidden md:block text-[10px] font-bold text-slate-400 uppercase tracking-widest">Feed: Live</div>
-                <button onclick="refreshRadar()" class="w-12 h-12 flex items-center justify-center rounded-full glass-card hover:rotate-180 transition-all duration-700">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-                </button>
-            </div>
-        </nav>
-
-        <!-- Bento Grid Layout -->
-        <div class="grid grid-cols-1 md:grid-cols-12 gap-6">
-            
-            <!-- Strategic Monitoring (Left Column) -->
-            <div class="md:col-span-4 space-y-6">
-                <div class="glass-card p-8 rounded-[2.5rem] relative overflow-hidden group">
-                    <h2 class="text-xs font-bold uppercase tracking-widest text-slate-400 mb-6">Strategic Nodes</h2>
-                    <div class="space-y-6">
-                        <div class="flex justify-between items-center group/item cursor-help">
-                            <span class="text-sm font-semibold text-slate-700 group-hover/item:text-blue-600">Thor Wind Farm</span>
-                            <span class="text-[10px] px-2 py-1 bg-blue-50 text-blue-600 rounded-md font-bold uppercase">Construction</span>
-                        </div>
-                        <div class="flex justify-between items-center group/item cursor-help">
-                            <span class="text-sm font-semibold text-slate-700 group-hover/item:text-emerald-600">North Sea Island</span>
-                            <span class="text-[10px] px-2 py-1 bg-emerald-50 text-emerald-600 rounded-md font-bold uppercase">Technical Design</span>
-                        </div>
-                        <div class="flex justify-between items-center group/item cursor-help">
-                            <span class="text-sm font-semibold text-slate-700 group-hover/item:text-amber-600">Hesselø Project</span>
-                            <span class="text-[10px] px-2 py-1 bg-amber-50 text-amber-600 rounded-md font-bold uppercase">Consultation</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="bg-slate-900 p-8 rounded-[2.5rem] text-white shadow-2xl relative overflow-hidden group">
-                    <div class="relative z-10">
-                        <p class="text-[10px] font-bold text-blue-400 uppercase tracking-[0.2em] mb-4">Official Portals</p>
-                        <div class="grid grid-cols-2 gap-4">
-                            <a href="https://energinet.dk/en" target="_blank" class="p-4 bg-white/5 rounded-2xl hover:bg-white/10 transition-colors">
-                                <span class="block text-xs font-bold mb-1">Energinet</span>
-                                <span class="text-[9px] text-slate-500">Grid Data</span>
-                            </a>
-                            <a href="https://ens.dk/en" target="_blank" class="p-4 bg-white/5 rounded-2xl hover:bg-white/10 transition-colors">
-                                <span class="block text-xs font-bold mb-1">DEA</span>
-                                <span class="text-[9px] text-slate-500">Legal</span>
-                            </a>
-                        </div>
-                    </div>
-                    <!-- Subtle compass icon in background -->
-                    <svg class="absolute -bottom-10 -right-10 w-48 h-48 text-white/5 rotate-12" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71L12 2z"></path></svg>
-                </div>
-            </div>
-
-            <!-- News Radar (Main Column) -->
-            <div class="md:col-span-8">
-                <div id="radar-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                    <!-- Dynamic Items -->
-                </div>
-            </div>
-
-        </div>
-
-        <footer class="mt-24 pt-12 border-t border-slate-200/50 flex flex-col md:flex-row justify-between items-center gap-6">
-            <div class="flex items-center gap-4">
-                <div class="w-8 h-[1px] bg-slate-300"></div>
-                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest italic">Real-time Maritime Intelligence Node</p>
-            </div>
-            <p class="text-[10px] text-slate-400 uppercase tracking-widest">© 2026 Forecast.bid — Copenhagen Sector</p>
-        </footer>
+  <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+    <div>
+      <h1 class="text-2xl font-bold text-slate-900 tracking-tight">Offshore Wind Digest</h1>
+      <p id="meta" class="text-sm text-slate-500 mt-1 italic">Loading latest news...</p>
     </div>
+    <button id="refreshBtn"
+      class="px-5 py-2 bg-white border border-slate-200 rounded-xl shadow-sm hover:bg-slate-50
+             active:bg-slate-100 transition-colors flex items-center gap-2 text-sm font-medium
+             text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed">
+      <span aria-hidden="true">⟳</span> Refresh
+    </button>
+  </header>
 
-    <script>
-        const FEEDS = [
-            { name: "Global Intelligence", url: "https://news.google.com/rss/search?q=offshore+wind+denmark+orsted+vestas+energinet&hl=en-US&gl=US&ceid=US:en" },
-            { name: "Market News", url: "https://www.offshorewind.biz/tag/denmark/feed/" }
-        ];
+  <div id="content" class="space-y-8"></div>
 
-        async function fetchRSS(feed) {
-            const proxy = `https://api.allorigins.win/get?url=${encodeURIComponent(feed.url)}`;
-            try {
-                const res = await fetch(proxy);
-                const data = await res.json();
-                const parser = new DOMParser();
-                const xml = parser.parseFromString(data.contents, "text/xml");
-                const items = xml.querySelectorAll("item");
-                
-                return Array.from(items).map(item => ({
-                    title: item.querySelector("title")?.textContent,
-                    link: item.querySelector("link")?.textContent,
-                    pubDate: new Date(item.querySelector("pubDate")?.textContent),
-                    source: feed.name
-                }));
-            } catch (e) { return []; }
+  <footer class="mt-12 pt-6 border-t border-slate-200 text-center text-xs text-slate-400">
+    Powered by Gemini Flash · Real-time search when quota available
+  </footer>
+
+</div>
+<script>
+'use strict';
+
+// ── Configuration ─────────────────────────────────────────────────────────────
+
+const CONFIG = {
+  API_ENDPOINT: '/api/digest',
+  // Cache key is date-scoped so data refreshes automatically each day.
+  CACHE_KEY: 'offshore_digest_' + new Date().toISOString().slice(0, 10),
+  TIMEOUT_MS: 90000,   // 90s — Gemini with search can be slow
+  MAX_RETRIES: 2,      // 1 initial attempt + 1 retry on transient errors
+};
+
+const SECTIONS = [
+  { id: 'infrastructure', label: 'Infrastructure',
+    badge: 'bg-blue-50 text-blue-700 border-blue-200',   accent: 'border-l-blue-500'   },
+  { id: 'legislation',    label: 'Legislation',
+    badge: 'bg-green-50 text-green-700 border-green-200', accent: 'border-l-green-500'  },
+  { id: 'approvals',      label: 'Approvals',
+    badge: 'bg-amber-50 text-amber-700 border-amber-200', accent: 'border-l-amber-500'  },
+  { id: 'projects',       label: 'Projects',
+    badge: 'bg-purple-50 text-purple-700 border-purple-200', accent: 'border-l-purple-500' },
+];
+
+// ── Cache ─────────────────────────────────────────────────────────────────────
+
+function saveCache(data) {
+  try { localStorage.setItem(CONFIG.CACHE_KEY, JSON.stringify(data)); } catch {}
+}
+
+function loadCache() {
+  try { return JSON.parse(localStorage.getItem(CONFIG.CACHE_KEY)) || null; } catch { return null; }
+}
+
+// ── Utilities ─────────────────────────────────────────────────────────────────
+
+/** Return a validated http/https URL or null. Prevents javascript: injection. */
+function safeUrl(url) {
+  try {
+    const u = new URL(url);
+    return (u.protocol === 'https:' || u.protocol === 'http:') ? url : null;
+  } catch { return null; }
+}
+
+function setMeta(text) {
+  document.getElementById('meta').textContent = text;
+}
+
+// ── UI States ─────────────────────────────────────────────────────────────────
+
+/** Skeleton loader — shown while the Cloudflare Function is processing. */
+function showSkeleton() {
+  setMeta('Scanning offshore wind news and regulatory updates…');
+  const content = document.getElementById('content');
+  content.replaceChildren();
+  for (let i = 0; i < 4; i++) {
+    const card = document.createElement('div');
+    card.className = 'p-6 bg-white border border-slate-200 rounded-2xl space-y-3';
+    // Static hardcoded HTML — safe to use innerHTML here (no user/API data).
+    card.innerHTML =
+      '<div class="skeleton h-3 w-1/4 rounded"></div>' +
+      '<div class="skeleton h-4 w-3/4 rounded mt-1"></div>' +
+      '<div class="skeleton h-3 w-full rounded"></div>' +
+      '<div class="skeleton h-3 w-2/3 rounded"></div>';
+    content.appendChild(card);
+  }
+}
+
+/** Red error box — shown when all retries are exhausted. */
+function showError(message, isQuota = false) {
+  setMeta('Failed to load digest');
+  const content = document.getElementById('content');
+  content.replaceChildren();
+
+  const box = document.createElement('div');
+  box.className = 'p-5 bg-red-50 border border-red-200 rounded-2xl space-y-2';
+
+  const heading = document.createElement('p');
+  heading.className = 'text-sm font-semibold text-red-700';
+  heading.textContent = isQuota ? 'API quota temporarily exhausted' : 'Could not load digest';
+
+  const detail = document.createElement('p');
+  detail.className = 'text-sm text-red-600 font-mono break-all';
+  detail.textContent = message;
+
+  const hint = document.createElement('p');
+  hint.className = 'text-xs text-red-400 pt-1';
+  hint.textContent = isQuota
+    ? 'All available models have hit their rate limit. Please wait a few minutes and click Refresh.'
+    : 'Ensure GEMINI_API_KEY is set in Cloudflare Dashboard → Settings → Environment Variables.';
+
+  box.append(heading, detail, hint);
+  content.appendChild(box);
+  document.getElementById('refreshBtn').disabled = false;
+}
+
+/**
+ * Quota countdown box — shown when the backend returns 429.
+ * Counts down in real time, then resolves so the caller can retry once.
+ */
+async function showQuotaCountdown(seconds) {
+  const content = document.getElementById('content');
+  content.replaceChildren();
+
+  const box = document.createElement('div');
+  box.className = 'p-5 bg-amber-50 border border-amber-200 rounded-2xl space-y-2';
+
+  const heading = document.createElement('p');
+  heading.className = 'text-sm font-semibold text-amber-800';
+  heading.textContent = 'API quota limit reached';
+
+  const countdownEl = document.createElement('p');
+  countdownEl.className = 'text-sm text-amber-700';
+
+  const hint = document.createElement('p');
+  hint.className = 'text-xs text-amber-500 pt-1';
+  hint.textContent = 'Retrying automatically once — all three models are being tried with and without search.';
+
+  box.append(heading, countdownEl, hint);
+  content.appendChild(box);
+
+  for (let s = seconds; s > 0; s--) {
+    setMeta(`Quota limit — retrying in ${s}s…`);
+    countdownEl.textContent = `Retrying in ${s} second${s !== 1 ? 's' : ''}…`;
+    await new Promise(r => setTimeout(r, 1000));
+  }
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+
+/**
+ * Render the digest data into the content area.
+ * All AI-provided text is set via textContent — never innerHTML.
+ */
+function renderDigest(data) {
+  const total = SECTIONS.reduce((sum, s) => sum + (data[s.id]?.length || 0), 0);
+  setMeta(`${data.date || 'Today'} · ${total} item${total !== 1 ? 's' : ''} across 4 categories`);
+
+  const content = document.getElementById('content');
+  content.replaceChildren();
+
+  // Fallback notice — search grounding was unavailable, showing AI knowledge.
+  if (data.isFallback) {
+    const notice = document.createElement('div');
+    notice.className =
+      'flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-2xl';
+
+    const icon = document.createElement('span');
+    icon.className = 'text-amber-500 mt-px shrink-0 text-sm';
+    icon.textContent = '⚠';
+
+    const msg = document.createElement('span');
+    msg.className = 'text-xs text-amber-700';
+    msg.textContent =
+      'Note: Search quota limited. Showing latest available AI insights. ' +
+      'Data may not reflect today\'s most recent news.';
+
+    notice.append(icon, msg);
+    content.appendChild(notice);
+  }
+
+  // Render each section.
+  SECTIONS.forEach(section => {
+    const items = Array.isArray(data[section.id]) ? data[section.id] : [];
+
+    const wrapper = document.createElement('section');
+
+    // Section header badge + horizontal rule.
+    const headerRow = document.createElement('div');
+    headerRow.className = 'flex items-center gap-3 mb-4';
+
+    const badge = document.createElement('span');
+    badge.className =
+      `px-3 py-1 text-[11px] font-bold rounded-full uppercase tracking-widest border ${section.badge}`;
+    badge.textContent = section.label;
+
+    const divider = document.createElement('div');
+    divider.className = 'h-px flex-1 bg-slate-100';
+
+    headerRow.append(badge, divider);
+    wrapper.appendChild(headerRow);
+
+    // Cards grid.
+    const grid = document.createElement('div');
+    grid.className = 'grid gap-4';
+
+    if (items.length === 0) {
+      const empty = document.createElement('p');
+      empty.className = 'text-sm text-slate-400 italic py-2 pl-1';
+      empty.textContent = 'No updates found in this category.';
+      grid.appendChild(empty);
+    } else {
+      items.forEach(item => {
+        const card = document.createElement('div');
+        card.className =
+          `bg-white border border-slate-200 border-l-4 ${section.accent} ` +
+          `rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow duration-200`;
+
+        // Title — linked if a valid URL is available.
+        const titleEl = document.createElement('div');
+        titleEl.className = 'text-sm font-semibold text-slate-800 mb-2';
+
+        const validUrl = item.url ? safeUrl(item.url) : null;
+        if (validUrl) {
+          const link = document.createElement('a');
+          link.href = validUrl;
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          link.className =
+            'hover:text-blue-600 underline underline-offset-4 ' +
+            'decoration-slate-200 hover:decoration-blue-300 transition-colors';
+          link.textContent = item.title || '(untitled)';
+          titleEl.appendChild(link);
+        } else {
+          titleEl.textContent = item.title || '(untitled)';
         }
 
-        async function refreshRadar() {
-            const container = document.getElementById('radar-grid');
-            const status = document.getElementById('sync-status');
-            
-            // Loading State
-            container.innerHTML = Array(4).fill(0).map(() => `
-                <div class="glass-card p-8 rounded-[2.5rem] space-y-4">
-                    <div class="shimmer h-3 w-20 rounded-full"></div>
-                    <div class="shimmer h-5 w-full rounded-lg"></div>
-                    <div class="shimmer h-5 w-2/3 rounded-lg"></div>
-                </div>
-            `).join('');
+        // Summary — italic with left accent border.
+        const summary = document.createElement('p');
+        summary.className =
+          'text-sm text-slate-600 leading-relaxed italic border-l-2 border-slate-100 pl-3 mb-3';
+        summary.textContent = item.summary || '';
 
-            const results = await Promise.all(FEEDS.map(fetchRSS));
-            const combined = results.flat().sort((a, b) => b.pubDate - a.pubDate).slice(0, 10);
+        // Source label.
+        const source = document.createElement('div');
+        source.className = 'text-[11px] font-medium text-slate-400 uppercase tracking-wider';
+        source.textContent = item.source || 'Unknown Source';
 
-            container.innerHTML = combined.map((item, idx) => {
-                const relativeTime = new Intl.RelativeTimeFormat('en', { style: 'short' }).format(
-                    Math.ceil((item.pubDate - new Date()) / (1000 * 60 * 60 * 24)), 'day'
-                );
-                
-                return `
-                    <div class="glass-card p-8 rounded-[2.5rem] flex flex-col justify-between group">
-                        <div>
-                            <div class="flex justify-between items-start mb-6">
-                                <span class="text-[10px] font-bold uppercase tracking-widest text-slate-400">${item.source}</span>
-                                <span class="text-[9px] font-bold bg-slate-100 px-2 py-1 rounded text-slate-500">${relativeTime === '0 day' ? 'Today' : relativeTime}</span>
-                            </div>
-                            <h3 class="text-base font-bold text-slate-800 leading-snug group-hover:text-blue-600 transition-colors">
-                                <a href="${item.link}" target="_blank">${item.title}</a>
-                            </h3>
-                        </div>
-                        <div class="mt-8 flex items-center justify-between">
-                            <div class="w-10 h-10 rounded-full bg-nordic-sand flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                <svg class="w-4 h-4 text-slate-900" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            }).join('');
+        card.append(titleEl, summary, source);
+        grid.appendChild(card);
+      });
+    }
 
-            status.textContent = `Feed Active / ${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+    wrapper.appendChild(grid);
+    content.appendChild(wrapper);
+  });
+
+  document.getElementById('refreshBtn').disabled = false;
+}
+
+// ── Core fetch ────────────────────────────────────────────────────────────────
+
+async function runDigest(forceRefresh = false) {
+  const btn = document.getElementById('refreshBtn');
+  btn.disabled = true;
+
+  // Serve from cache first — avoids burning API quota on every page load.
+  if (!forceRefresh) {
+    const cached = loadCache();
+    if (cached) {
+      renderDigest(cached);
+      return;
+    }
+  }
+
+  showSkeleton();
+
+  // The backend already tries 3 models × 2 passes (6 Gemini calls total).
+  // If it returns 429 it means every single model is quota-limited.
+  // We do ONE countdown-and-retry; if that also fails we stop — there is no
+  // value in a longer loop since the quota won't recover in under a minute.
+  let quotaRetried = false;
+  let delay = 2000; // for transient (non-429) errors only
+
+  for (let attempt = 0; attempt < CONFIG.MAX_RETRIES; attempt++) {
+    try {
+      const res = await fetch(CONFIG.API_ENDPOINT, {
+        signal: AbortSignal.timeout(CONFIG.TIMEOUT_MS),
+      });
+
+      const data = await res.json();
+
+      if (res.status === 429) {
+        // Only retry quota errors once — more retries won't help.
+        if (!quotaRetried) {
+          quotaRetried = true;
+          const waitSecs = data.retryAfter || 60;
+          await showQuotaCountdown(waitSecs);
+          showSkeleton();
+          continue;
         }
+        // Second 429 — give up cleanly.
+        showError(
+          `All models are quota-exhausted. Please wait ~${data.retryAfter || 60}s and try again.`,
+          true,
+        );
+        return;
+      }
 
-        window.onload = refreshRadar;
-    </script>
+      if (!res.ok) {
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
+
+      // Success — isFallback is set in the body by the backend.
+      saveCache(data);
+      renderDigest(data);
+      return;
+
+    } catch (err) {
+      if (attempt < CONFIG.MAX_RETRIES - 1) {
+        setMeta(`Retrying… (attempt ${attempt + 2}/${CONFIG.MAX_RETRIES})`);
+        await new Promise(r => setTimeout(r, delay));
+        delay *= 2;
+      } else {
+        showError(err?.message || 'Unknown error — check the browser console for details.');
+      }
+    }
+  }
+}
+
+document.getElementById('refreshBtn').addEventListener('click', () => runDigest(true));
+window.onload = () => runDigest();
+</script>
 </body>
 </html>
