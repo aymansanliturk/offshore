@@ -42,7 +42,7 @@
   <div id="content" class="space-y-8"></div>
 
   <footer class="mt-12 pt-6 border-t border-slate-200 text-center text-xs text-slate-400">
-    Powered by Gemini Flash · Real-time search when quota available
+    Live RSS · Offshore Wind Biz · Google News · Recharge News
   </footer>
 
 </div>
@@ -53,19 +53,19 @@
 
 const CONFIG = {
   API_ENDPOINT: '/api/digest',
-  // Cache key is date-scoped so data refreshes automatically each day.
-  CACHE_KEY: 'offshore_digest_' + new Date().toISOString().slice(0, 10),
-  TIMEOUT_MS: 90000,   // 90s — Gemini with search can be slow
-  MAX_RETRIES: 2,      // 1 initial attempt + 1 retry on transient errors
+  // Cache key is hour-scoped — data auto-refreshes every hour.
+  CACHE_KEY: 'offshore_rss_' + new Date().toISOString().slice(0, 13),
+  TIMEOUT_MS: 30000,
+  MAX_RETRIES: 2,
 };
 
 const SECTIONS = [
   { id: 'infrastructure', label: 'Infrastructure',
-    badge: 'bg-blue-50 text-blue-700 border-blue-200',   accent: 'border-l-blue-500'   },
+    badge: 'bg-blue-50 text-blue-700 border-blue-200',      accent: 'border-l-blue-500'   },
   { id: 'legislation',    label: 'Legislation',
-    badge: 'bg-green-50 text-green-700 border-green-200', accent: 'border-l-green-500'  },
+    badge: 'bg-green-50 text-green-700 border-green-200',   accent: 'border-l-green-500'  },
   { id: 'approvals',      label: 'Approvals',
-    badge: 'bg-amber-50 text-amber-700 border-amber-200', accent: 'border-l-amber-500'  },
+    badge: 'bg-amber-50 text-amber-700 border-amber-200',   accent: 'border-l-amber-500'  },
   { id: 'projects',       label: 'Projects',
     badge: 'bg-purple-50 text-purple-700 border-purple-200', accent: 'border-l-purple-500' },
 ];
@@ -90,15 +90,25 @@ function safeUrl(url) {
   } catch { return null; }
 }
 
+function relativeTime(dateStr) {
+  if (!dateStr) return '';
+  const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return '';
+  const diffHrs = Math.floor((Date.now() - date.getTime()) / 3600000);
+  if (diffHrs < 1) return 'just now';
+  if (diffHrs < 24) return `${diffHrs}h ago`;
+  const diffDays = Math.floor(diffHrs / 24);
+  return diffDays === 1 ? '1 day ago' : `${diffDays} days ago`;
+}
+
 function setMeta(text) {
   document.getElementById('meta').textContent = text;
 }
 
 // ── UI States ─────────────────────────────────────────────────────────────────
 
-/** Skeleton loader — shown while the Cloudflare Function is processing. */
 function showSkeleton() {
-  setMeta('Scanning offshore wind news and regulatory updates…');
+  setMeta('Fetching latest offshore wind news…');
   const content = document.getElementById('content');
   content.replaceChildren();
   for (let i = 0; i < 4; i++) {
@@ -114,8 +124,7 @@ function showSkeleton() {
   }
 }
 
-/** Red error box — shown when all retries are exhausted. */
-function showError(message, isQuota = false) {
+function showError(message) {
   setMeta('Failed to load digest');
   const content = document.getElementById('content');
   content.replaceChildren();
@@ -125,89 +134,47 @@ function showError(message, isQuota = false) {
 
   const heading = document.createElement('p');
   heading.className = 'text-sm font-semibold text-red-700';
-  heading.textContent = isQuota ? 'API quota temporarily exhausted' : 'Could not load digest';
+  heading.textContent = 'Could not load digest';
 
   const detail = document.createElement('p');
   detail.className = 'text-sm text-red-600 font-mono break-all';
   detail.textContent = message;
 
-  const hint = document.createElement('p');
-  hint.className = 'text-xs text-red-400 pt-1';
-  hint.textContent = isQuota
-    ? 'All available models have hit their rate limit. Please wait a few minutes and click Refresh.'
-    : 'Ensure GEMINI_API_KEY is set in Cloudflare Dashboard → Settings → Environment Variables.';
-
-  box.append(heading, detail, hint);
+  box.append(heading, detail);
   content.appendChild(box);
   document.getElementById('refreshBtn').disabled = false;
-}
-
-/**
- * Quota countdown box — shown when the backend returns 429.
- * Counts down in real time, then resolves so the caller can retry once.
- */
-async function showQuotaCountdown(seconds) {
-  const content = document.getElementById('content');
-  content.replaceChildren();
-
-  const box = document.createElement('div');
-  box.className = 'p-5 bg-amber-50 border border-amber-200 rounded-2xl space-y-2';
-
-  const heading = document.createElement('p');
-  heading.className = 'text-sm font-semibold text-amber-800';
-  heading.textContent = 'API quota limit reached';
-
-  const countdownEl = document.createElement('p');
-  countdownEl.className = 'text-sm text-amber-700';
-
-  const hint = document.createElement('p');
-  hint.className = 'text-xs text-amber-500 pt-1';
-  hint.textContent = 'Retrying automatically once — all three models are being tried with and without search.';
-
-  box.append(heading, countdownEl, hint);
-  content.appendChild(box);
-
-  for (let s = seconds; s > 0; s--) {
-    setMeta(`Quota limit — retrying in ${s}s…`);
-    countdownEl.textContent = `Retrying in ${s} second${s !== 1 ? 's' : ''}…`;
-    await new Promise(r => setTimeout(r, 1000));
-  }
 }
 
 // ── Render ────────────────────────────────────────────────────────────────────
 
 /**
  * Render the digest data into the content area.
- * All AI-provided text is set via textContent — never innerHTML.
+ * All RSS-provided text is set via textContent — never innerHTML.
  */
 function renderDigest(data) {
   const total = SECTIONS.reduce((sum, s) => sum + (data[s.id]?.length || 0), 0);
-  setMeta(`${data.date || 'Today'} · ${total} item${total !== 1 ? 's' : ''} across 4 categories`);
+  const srcNote = data.sourcesLive > 0
+    ? ` · ${data.sourcesLive} source${data.sourcesLive !== 1 ? 's' : ''} live`
+    : '';
+  setMeta(`${data.date || 'Today'} · ${total} item${total !== 1 ? 's' : ''}${srcNote}`);
 
   const content = document.getElementById('content');
   content.replaceChildren();
 
-  // Fallback notice — search grounding was unavailable, showing AI knowledge.
-  if (data.isFallback) {
+  // No articles at all — sources may be down.
+  if (total === 0) {
     const notice = document.createElement('div');
-    notice.className =
-      'flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-2xl';
-
-    const icon = document.createElement('span');
-    icon.className = 'text-amber-500 mt-px shrink-0 text-sm';
-    icon.textContent = '⚠';
-
-    const msg = document.createElement('span');
-    msg.className = 'text-xs text-amber-700';
+    notice.className = 'p-5 bg-slate-50 border border-slate-200 rounded-2xl';
+    const msg = document.createElement('p');
+    msg.className = 'text-sm text-slate-500';
     msg.textContent =
-      'Note: Search quota limited. Showing latest available AI insights. ' +
-      'Data may not reflect today\'s most recent news.';
-
-    notice.append(icon, msg);
+      'No articles found right now. RSS sources may be temporarily unavailable — try refreshing in a few minutes.';
+    notice.appendChild(msg);
     content.appendChild(notice);
+    document.getElementById('refreshBtn').disabled = false;
+    return;
   }
 
-  // Render each section.
   SECTIONS.forEach(section => {
     const items = Array.isArray(data[section.id]) ? data[section.id] : [];
 
@@ -228,7 +195,6 @@ function renderDigest(data) {
     headerRow.append(badge, divider);
     wrapper.appendChild(headerRow);
 
-    // Cards grid.
     const grid = document.createElement('div');
     grid.className = 'grid gap-4';
 
@@ -263,18 +229,32 @@ function renderDigest(data) {
           titleEl.textContent = item.title || '(untitled)';
         }
 
-        // Summary — italic with left accent border.
-        const summary = document.createElement('p');
-        summary.className =
-          'text-sm text-slate-600 leading-relaxed italic border-l-2 border-slate-100 pl-3 mb-3';
-        summary.textContent = item.summary || '';
+        card.appendChild(titleEl);
 
-        // Source label.
-        const source = document.createElement('div');
+        // Description snippet — only shown when available.
+        if (item.description) {
+          const desc = document.createElement('p');
+          desc.className =
+            'text-sm text-slate-500 leading-relaxed border-l-2 border-slate-100 pl-3 mb-3';
+          desc.textContent = item.description;
+          card.appendChild(desc);
+        }
+
+        // Footer: source name + relative age.
+        const footer = document.createElement('div');
+        footer.className = 'flex items-center justify-between mt-2';
+
+        const source = document.createElement('span');
         source.className = 'text-[11px] font-medium text-slate-400 uppercase tracking-wider';
         source.textContent = item.source || 'Unknown Source';
 
-        card.append(titleEl, summary, source);
+        const age = document.createElement('span');
+        age.className = 'text-[11px] text-slate-300';
+        age.textContent = relativeTime(item.pubDate);
+
+        footer.append(source, age);
+        card.appendChild(footer);
+
         grid.appendChild(card);
       });
     }
@@ -292,24 +272,14 @@ async function runDigest(forceRefresh = false) {
   const btn = document.getElementById('refreshBtn');
   btn.disabled = true;
 
-  // Serve from cache first — avoids burning API quota on every page load.
   if (!forceRefresh) {
     const cached = loadCache();
-    if (cached) {
-      renderDigest(cached);
-      return;
-    }
+    if (cached) { renderDigest(cached); return; }
   }
 
   showSkeleton();
 
-  // The backend already tries 3 models × 2 passes (6 Gemini calls total).
-  // If it returns 429 it means every single model is quota-limited.
-  // We do ONE countdown-and-retry; if that also fails we stop — there is no
-  // value in a longer loop since the quota won't recover in under a minute.
-  let quotaRetried = false;
-  let delay = 2000; // for transient (non-429) errors only
-
+  let delay = 2000;
   for (let attempt = 0; attempt < CONFIG.MAX_RETRIES; attempt++) {
     try {
       const res = await fetch(CONFIG.API_ENDPOINT, {
@@ -318,28 +288,10 @@ async function runDigest(forceRefresh = false) {
 
       const data = await res.json();
 
-      if (res.status === 429) {
-        // Only retry quota errors once — more retries won't help.
-        if (!quotaRetried) {
-          quotaRetried = true;
-          const waitSecs = data.retryAfter || 60;
-          await showQuotaCountdown(waitSecs);
-          showSkeleton();
-          continue;
-        }
-        // Second 429 — give up cleanly.
-        showError(
-          `All models are quota-exhausted. Please wait ~${data.retryAfter || 60}s and try again.`,
-          true,
-        );
-        return;
-      }
-
       if (!res.ok) {
         throw new Error(data.error || `HTTP ${res.status}`);
       }
 
-      // Success — isFallback is set in the body by the backend.
       saveCache(data);
       renderDigest(data);
       return;

@@ -1,200 +1,209 @@
-// Cloudflare Pages Function — functions/api/digest.js — deployed 2026-04-13
+// Cloudflare Pages Function — functions/api/digest.js
 //
-// Two-pass strategy to handle "limit: 0" search grounding quota:
-//   Pass 1 — call Gemini WITH Google Search tool (real-time data)
-//   Pass 2 — call Gemini WITHOUT search tool (AI knowledge fallback)
-//
-// Each pass tries every model in MODELS in order until one succeeds.
-// Any non-200 from a model skips to the next; only when every model
-// in a pass fails does we move to the next pass.
+// Fetches RSS feeds from dedicated offshore wind news sources server-side.
+// No API key required. Categorises articles by keyword matching.
+// Three sources are tried in parallel; any that fail are silently skipped.
 
-const MODELS = [
-  'gemini-2.5-flash',   // preferred — newest
-  'gemini-2.0-flash',   // stable fallback
-  'gemini-1.5-flash',   // last resort
+const SOURCES = [
+  {
+    name: 'Offshore Wind Biz',
+    url: 'https://www.offshorewind.biz/tag/denmark/feed/',
+  },
+  {
+    name: 'Google News',
+    url: 'https://news.google.com/rss/search?q=%22offshore+wind%22+denmark&hl=en-US&gl=US&ceid=US:en',
+  },
+  {
+    name: 'Recharge News',
+    url: 'https://rechargenews.com/tag/offshore-wind/feed/',
+  },
 ];
 
-// ── Prompts ───────────────────────────────────────────────────────────────────
+// ── Categorisation keywords ───────────────────────────────────────────────────
+// 'projects' is the default when no other category scores higher.
 
-const SEARCH_PROMPT = `
-Search for the latest news from the past 48 hours about offshore wind energy in Denmark.
-Scan English, Danish, German, and Dutch sources.
-Categorize each item into exactly one of: infrastructure, legislation, approvals, projects.
-For every item include: a concise title, a 2–3 sentence summary, the source publication name, and the article URL.
-IMPORTANT: All output — titles, summaries, and source names — must be in English regardless of the original language.
-Return today's date as the "date" field (format: Month DD, YYYY — e.g. "April 13, 2026").
-Return valid JSON only. No markdown, no prose outside the JSON.
-`.trim();
-
-const FALLBACK_PROMPT = `
-You are a senior offshore wind energy analyst. Based solely on your training knowledge, produce a structured briefing on Danish offshore wind developments.
-Cover all four areas: infrastructure (construction & planning), legislation (policy & regulation), approvals (permits & consents), projects (announcements & progress).
-For every item include: a concise title, a 2–3 sentence summary, the source or organisation name, and a URL if you know one (empty string if not).
-IMPORTANT: All output — titles, summaries, and source names — must be in English regardless of the original language.
-Return today's date as the "date" field (format: Month DD, YYYY — e.g. "${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}").
-Return valid JSON only. No markdown, no prose outside the JSON.
-`.trim();
-
-// ── Schema ────────────────────────────────────────────────────────────────────
-
-const ITEM_SCHEMA = {
-  type: 'OBJECT',
-  properties: {
-    title:   { type: 'STRING' },
-    summary: { type: 'STRING' },
-    source:  { type: 'STRING' },
-    url:     { type: 'STRING' },
-  },
-  required: ['title', 'summary', 'source', 'url'],
+const CATEGORY_KEYWORDS = {
+  approvals: [
+    'permit', 'licens', 'approval', 'approved', 'consent',
+    'authorization', 'authorisation', 'environmental assessment',
+    'eia', 'planning permission', 'planning consent',
+    'granted', 'cleared', 'rejected', 'refused', 'clearance',
+  ],
+  legislation: [
+    'legislation', 'law ', 'regulation', 'policy', 'directive',
+    'parliament', 'government', 'minister', 'ministry',
+    'european commission', 'eu ', 'treaty', 'reform',
+    'bill ', 'amendment', 'voted', 'vote ', 'ruling', 'decree',
+  ],
+  infrastructure: [
+    'cable', 'substation', 'foundation', 'monopile', 'jacket',
+    'transformer', 'hvdc', 'interconnect', 'array cable',
+    'export cable', 'installation vessel', 'harbour', 'harbor',
+    'maintenance', 'decommission', 'grid connection',
+    'converter station', 'jack-up', 'cabling',
+  ],
 };
 
-const RESPONSE_SCHEMA = {
-  type: 'OBJECT',
-  properties: {
-    date:           { type: 'STRING' },
-    infrastructure: { type: 'ARRAY', items: ITEM_SCHEMA },
-    legislation:    { type: 'ARRAY', items: ITEM_SCHEMA },
-    approvals:      { type: 'ARRAY', items: ITEM_SCHEMA },
-    projects:       { type: 'ARRAY', items: ITEM_SCHEMA },
-  },
-  required: ['date', 'infrastructure', 'legislation', 'approvals', 'projects'],
-};
+// ── XML helpers ───────────────────────────────────────────────────────────────
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+function extractTag(xml, tag) {
+  const cdata = new RegExp(
+    `<${tag}>[\\s]*<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>[\\s]*<\\/${tag}>`, 'i',
+  );
+  let m = xml.match(cdata);
+  if (m) return m[1].trim();
 
-function buildBody(prompt, useSearch) {
-  const body = {
-    contents: [{ parts: [{ text: prompt }] }],
-    generationConfig: {
-      responseMimeType: 'application/json',
-      responseSchema: RESPONSE_SCHEMA,
-    },
-  };
-  if (useSearch) body.tools = [{ google_search: {} }];
-  return body;
+  const plain = new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`, 'i');
+  m = xml.match(plain);
+  return m ? m[1].trim() : '';
 }
 
-/**
- * Try every model in MODELS with the given request body.
- *
- * Any non-200 response skips to the next model.
- * This means a 429 on search quota will fall through to the next model
- * (different quota bucket), and if all models fail, to Pass 2 (no search).
- *
- * Returns one of:
- *   { type: 'success', text, model }
- *   { type: 'quota',   retryAfter }  — every model returned 429
- *   { type: 'skip',    reason }      — every model returned other non-2xx
- */
-async function tryModels(requestBody, apiKey) {
-  let maxRetryAfter = null;
-  const reasons = [];
+function extractLink(xml) {
+  // Standard <link>URL</link>
+  let m = xml.match(/<link>([^<\s][^<]*)<\/link>/i);
+  if (m) return m[1].trim();
 
-  for (const model of MODELS) {
-    const url =
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  // CDATA link
+  m = xml.match(/<link><!\[CDATA\[(.*?)\]\]><\/link>/i);
+  if (m) return m[1].trim();
 
-    let res;
-    try {
-      res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody),
-      });
-    } catch (err) {
-      reasons.push(`${model}: network error (${err.message})`);
-      continue;
-    }
+  // <guid isPermaLink="true">URL</guid>
+  m = xml.match(/<guid[^>]*isPermaLink="true"[^>]*>(https?:\/\/[^<]+)<\/guid>/i);
+  if (m) return m[1].trim();
 
-    if (!res.ok) {
-      if (res.status === 429) {
-        const after = parseInt(res.headers.get('Retry-After') || '60', 10);
-        if (maxRetryAfter === null || after > maxRetryAfter) maxRetryAfter = after;
-      }
-      reasons.push(`${model}: HTTP ${res.status}`);
-      continue;
-    }
+  // <guid>https://…</guid>
+  m = xml.match(/<guid[^>]*>(https?:\/\/[^<]+)<\/guid>/i);
+  if (m) return m[1].trim();
 
-    const result = await res.json();
-    const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
-
-    if (!text) {
-      reasons.push(`${model}: empty response`);
-      continue;
-    }
-
-    return { type: 'success', text, model };
-  }
-
-  if (maxRetryAfter !== null) return { type: 'quota', retryAfter: maxRetryAfter };
-  return { type: 'skip', reason: reasons.join('; ') };
+  return '';
 }
 
-/**
- * Parse Gemini's JSON text, inject isFallback, and return a Response.
- * isFallback is included in the body (not just a header) so it survives
- * localStorage caching and is available without re-fetching.
- */
-function respond(geminiText, isFallback, model) {
-  try {
-    const data = JSON.parse(geminiText);
-    data.isFallback = isFallback;
-    return new Response(JSON.stringify(data), {
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Model-Used': model,
-      },
+function stripHtml(html, maxLen = 220) {
+  const text = html
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&apos;/g, "'")
+    .replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+  if (text.length <= maxLen) return text;
+  return text.slice(0, maxLen).replace(/\s\S*$/, '') + '…';
+}
+
+function parseItems(xml, defaultSource) {
+  const items = [];
+  const re = /<item>([\s\S]*?)<\/item>/g;
+  let m;
+  while ((m = re.exec(xml)) !== null) {
+    const block = m[1];
+    const title = stripHtml(extractTag(block, 'title'), 160);
+    const link  = extractLink(block);
+    if (!title || !link) continue;
+
+    // Google News items carry <source url="…">Publisher Name</source>
+    const srcTag = block.match(/<source[^>]*>([^<]+)<\/source>/i);
+    const source = srcTag ? srcTag[1].trim() : defaultSource;
+
+    items.push({
+      title,
+      url:         link,
+      description: stripHtml(extractTag(block, 'description')),
+      source,
+      pubDate:     extractTag(block, 'pubDate'),
     });
-  } catch {
-    return jsonResponse(
-      { error: 'Failed to parse Gemini response. The model may have returned malformed JSON.' },
-      502,
-    );
   }
+  return items;
 }
 
-function jsonResponse(data, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  });
+// ── Categorisation ────────────────────────────────────────────────────────────
+
+function categorize(title, description) {
+  const text = `${title} ${description}`.toLowerCase();
+  const scores = { approvals: 0, legislation: 0, infrastructure: 0 };
+  for (const [cat, kws] of Object.entries(CATEGORY_KEYWORDS)) {
+    for (const kw of kws) if (text.includes(kw)) scores[cat]++;
+  }
+  let best = 'projects', bestScore = 0;
+  for (const [cat, score] of Object.entries(scores)) {
+    if (score > bestScore) { bestScore = score; best = cat; }
+  }
+  return best;
+}
+
+// ── Deduplication ─────────────────────────────────────────────────────────────
+
+function dedup(items) {
+  const kept = [];
+  for (const item of items) {
+    const words = new Set(
+      item.title.toLowerCase().split(/\W+/).filter(w => w.length > 3),
+    );
+    const isDupe = kept.some(k => {
+      const kWords = new Set(k.title.toLowerCase().split(/\W+/).filter(w => w.length > 3));
+      const shared = [...words].filter(w => kWords.has(w)).length;
+      return shared / Math.max(words.size, kWords.size, 1) > 0.6;
+    });
+    if (!isDupe) kept.push(item);
+  }
+  return kept;
+}
+
+// ── URL safety ────────────────────────────────────────────────────────────────
+
+function safeUrl(url) {
+  try {
+    const u = new URL(url);
+    return (u.protocol === 'http:' || u.protocol === 'https:') ? url : null;
+  } catch { return null; }
+}
+
+// ── Source fetch ──────────────────────────────────────────────────────────────
+
+async function fetchSource(source) {
+  try {
+    const res = await fetch(source.url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; OffshoreWindDigest/1.0)' },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return [];
+    return parseItems(await res.text(), source.name);
+  } catch {
+    return [];
+  }
 }
 
 // ── Handler ───────────────────────────────────────────────────────────────────
 
-export async function onRequest(context) {
-  const API_KEY = context.env.GEMINI_API_KEY;
+export async function onRequest() {
+  const results = await Promise.all(SOURCES.map(fetchSource));
+  const sourcesLive = results.filter(r => r.length > 0).length;
 
-  if (!API_KEY) {
-    return jsonResponse({
-      error: 'GEMINI_API_KEY is not set. Add it in Cloudflare Dashboard → Pages project → Settings → Environment Variables.',
-    }, 500);
+  // Merge, sort newest-first, deduplicate
+  const items = dedup(
+    results.flat().sort((a, b) => new Date(b.pubDate || 0) - new Date(a.pubDate || 0)),
+  );
+
+  const digest = {
+    date: new Date().toLocaleDateString('en-US', {
+      month: 'long', day: 'numeric', year: 'numeric',
+    }),
+    sourcesLive,
+    infrastructure: [],
+    legislation:    [],
+    approvals:      [],
+    projects:       [],
+  };
+
+  for (const item of items) {
+    const cat = categorize(item.title, item.description);
+    digest[cat].push({
+      title:       item.title,
+      url:         safeUrl(item.url) || '',
+      description: item.description,
+      source:      item.source,
+      pubDate:     item.pubDate,
+    });
   }
 
-  // Pass 1: real-time data via Google Search grounding.
-  const pass1 = await tryModels(buildBody(SEARCH_PROMPT, true), API_KEY);
-
-  if (pass1.type === 'success') {
-    return respond(pass1.text, false, pass1.model);
-  }
-
-  // Pass 1 blocked (search quota limit:0, 400, 404, or 5xx on all models).
-  // Pass 2: AI knowledge — no search tool, higher chance of success.
-  const pass2 = await tryModels(buildBody(FALLBACK_PROMPT, false), API_KEY);
-
-  if (pass2.type === 'success') {
-    return respond(pass2.text, true, pass2.model);
-  }
-
-  // Both passes exhausted — base model quota is also depleted.
-  if (pass2.type === 'quota') {
-    return jsonResponse({
-      error: 'All Gemini models are temporarily quota-exhausted. Please try again shortly.',
-      retryAfter: pass2.retryAfter,
-    }, 429);
-  }
-
-  return jsonResponse({
-    error: `No working Gemini model found. Details: ${pass2.reason}`,
-  }, 502);
+  return new Response(JSON.stringify(digest), {
+    headers: { 'Content-Type': 'application/json' },
+  });
 }
